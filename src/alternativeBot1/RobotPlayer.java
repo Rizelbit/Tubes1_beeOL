@@ -296,8 +296,8 @@ public class RobotPlayer {
 
         // Kalau ada bestRuin
         if (bestRuin != null) {
-            if (rc.isMovementReady()) { // Gerak ke dia
-                smartMoveTo(rc, bestRuin);
+            if (rc.isMovementReady()) { // Gerak ke si bestRuin
+                smartMoveTo(rc, bestRuin); 
             }
             if (myLocation.distanceSquaredTo(bestRuin) <= 8) { // Kalau udah deket, coba bangun tower
                 MapInfo ruinInfo = null;
@@ -320,6 +320,49 @@ public class RobotPlayer {
         }
         if (rc.isMovementReady()) {
             greedyExplore(rc);
+        }
+    }
+
+    /* ===== SOLDIER HELPER ===== */
+    // Pakai koordinat ruin yang mau dibangun tower di atasnya
+    static void buildTowerAtRuin(RobotController rc, MapLocation ruinLocation) throws GameActionException {
+        UnitType towerType = UnitType.LEVEL_ONE_PAINT_TOWER; // Summon satu buah tower level 1 tipe paint
+
+        // Cek pattern buat tower udah jadi atau belum
+        if (rc.canCompleteTowerPattern(towerType, ruinLocation)) {
+            rc.completeTowerPattern(towerType, ruinLocation);
+            return;
+        }
+
+        // Nempatin penanda di 24 tile sekitar ruin buat nandain pola
+        if (rc.canMarkTowerPattern(towerType, ruinLocation)) {
+            rc.markTowerPattern(towerType, ruinLocation);
+        }
+
+        // Warnain tile sesuai pola pakai warna primer dan sekunder
+        if (rc.isActionReady()) {
+            for (MapInfo patternTile: rc.senseNearbyMapInfos(ruinLocation, 8)) { // Scan map dalam radius <= 8 dari pusat ruin
+                // Cari tile yang udah ditandain dan belum diwarnain sesuai penanda
+                if (patternTile.getMark() != PaintType.EMPTY && patternTile.getMark() != patternTile.getPaint()) {
+                    boolean useSecondaryColor = (patternTile.getMark() == PaintType.ALLY_SECONDARY);
+                    if (rc.canAttack(patternTile.getMapLocation())) {
+                        rc.attack(patternTile.getMapLocation(), useSecondaryColor);
+                        break;
+                    }
+                }
+            }
+        }
+        // Kalau action udah kepake, deketin ruin aja terus
+        if (rc.isMovementReady()) {
+            smartMoveTo(rc, ruinLocation);
+        }
+    }
+
+    // Buat beneran naro cat ke tile di map
+    static void paintCurrentTile(RobotController rc) throws GameActionException {
+        MapInfo currentTile = rc.senseMapInfo(rc.getLocation()); // Tile yang lagi ditempatin sekarang
+        if (!currentTile.getPaint().isAlly() && rc.canAttack(rc.getLocation())) {
+            rc.attack(rc.getLocation()); // Warnain tile yang lagi diinjek sekarang
         }
     }
 }
