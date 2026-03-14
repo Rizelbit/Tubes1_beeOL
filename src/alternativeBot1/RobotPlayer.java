@@ -167,9 +167,9 @@ public class RobotPlayer {
         MapLocation nearest = null; // Lokasi menara sekutu terdekat yang udah dicatat
         int minDist = Integer.MAX_VALUE; // Set minimal distance ke maksimal value dari integer, supaya jarak-jarak lainnya bakal selalu di bawah dia
         for (int i = 0; i < towerCount; i++) { // Tentuin tower terdekat
-            int d = rc.getLocation().distanceSquaredTo(alliedTowers[i]); // Jarak robot dengan suatu tower
-            if (d < minDist) {
-                minDist = d;
+            int distance = rc.getLocation().distanceSquaredTo(alliedTowers[i]); // Jarak robot dengan suatu tower
+            if (distance < minDist) {
+                minDist = distance;
                 nearest = alliedTowers[i]; // Simpan tower terdekat
             }
         }
@@ -189,5 +189,52 @@ public class RobotPlayer {
             smartMoveTo(rc, nearest); // Gerak ke arah tower
         } // Di luar itu, robot diam di tempat sampe nunggu action ready di next round
         return true; // Robot lagi reload
+    }
+
+    /* ===== TOWER LOGIC ===== */
+    static void runTower(RobotController rc) throws GameActionException {
+        // Prioritas 1: spawn robot (utamanya soldier)
+        // Pakai buffer cat = 300 dan chips = 500 supaya masih ada cukup setidaknya satu kali lagi ngespawn
+        if (rc.isActionReady() && rc.getPaint() >= 300 && rc.getChips() >= 500) {
+            int randomRoll = randomNumberGenerator.nextInt(10);
+            UnitType unit;
+            if (randomRoll < 4) { // Probabilitas spawn soldier = 40%
+                unit = UnitType.SOLDIER;
+            } else if (randomRoll < 7) { // Probabilitas spawn splasher = 30%
+                unit = UnitType.SPLASHER;
+            } else { // Probabilitas spawn mopper = 30%
+                unit = UnitType.MOPPER;
+            }
+
+            // Kalau ga cukup chipsnya, fallback ke soldier yang paling murah
+            if (unit == UnitType.SPLASHER && rc.getChips() < 400) {
+                unit = UnitType.SOLDIER;
+            }
+            if (unit == UnitType.MOPPER && rc.getChips() < 300) {
+                unit = UnitType.SOLDIER;
+            }
+
+            // Coba spawn ke semua arah sampai ketemu yang valid (ga tabrakan sama robot lain misal)
+            for (Direction dir : directions) {
+                MapLocation loc = rc.getLocation().add(dir);
+                if (rc.canBuildRobot(unit, loc)) {
+                    rc.buildRobot(unit, loc);
+                    break;
+                }
+            }
+        }
+
+        // Prioritas 2: attack musuh
+        for (RobotInfo enemy : rc.senseNearbyRobots(-1, rc.getTeam().opponent())) { // Scan semua robot musuh yang berada dalam jangkauan
+            if (rc.canAttack(enemy.getLocation())) {
+                rc.attack(enemy.getLocation()); // Serang yang pertama bisa diserang
+                break;
+            }
+        }
+
+        // Prioritas 3: upgrade tower
+        if (rc.canUpgradeTower(rc.getLocation())) { // Cek lokasi tower saat ini, masih bisa upgrade apa ngga (chips cukup dan belum level maksimal)
+            rc.upgradeTower(rc.getLocation());
+        }
     }
 }
