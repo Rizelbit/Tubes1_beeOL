@@ -323,7 +323,7 @@ public class RobotPlayer {
         }
     }
 
-    /* ===== SOLDIER HELPER ===== */
+    /* ===== SOLDIER HELPERS ===== */
     // Pakai koordinat ruin yang mau dibangun tower di atasnya
     static void buildTowerAtRuin(RobotController rc, MapLocation ruinLocation) throws GameActionException {
         UnitType towerType = UnitType.LEVEL_ONE_PAINT_TOWER; // Summon satu buah tower level 1 tipe paint
@@ -364,5 +364,82 @@ public class RobotPlayer {
         if (!currentTile.getPaint().isAlly() && rc.canAttack(rc.getLocation())) {
             rc.attack(rc.getLocation()); // Warnain tile yang lagi diinjek sekarang
         }
+    }
+
+    /* ===== SPLASHER LOGIC ===== */
+    static void runSplasher(RobotController rc) throws GameActionException {
+        // Prioritas 1: reload cat kalau hampir habis
+        if (tryReloadPaint(rc)) {
+            return;
+        }
+
+        // Prioritas 2: samperin tower yang butuh support
+        if (rc.isMovementReady()) {
+            MapLocation target = findTowerToSupport(rc); // Butuh support: tower yang sekitarnya masih belum banyak diwarnain
+            if (target != null) { // Kalau ada, samperin
+                smartMoveTo(rc, target);
+            } else { // Kalau gaada, lanjut explore
+                greedyExplore(rc);
+            }
+        }
+
+        // Prioritas 3: Area of Effect (AoE) attack
+        if (rc.isActionReady()) {
+            MapLocation bestTarget = null;
+            int maxScore = 0;
+            // Cari semua kemungkinan titik yang bisa dijadikan pusat serangan
+            for (MapInfo tile : rc.senseNearbyMapInfos(rc.getType().actionRadiusSquared)) {
+                MapLocation location = tile.getMapLocation();
+                if (!rc.canAttack(location)) {
+                    continue;
+                }
+                int score = 0;
+                // Buat setiap kemungkinan, cek berapa tile yang bakal diwarnain kalau diserang di situ
+                for (MapInfo aoeTile : rc.senseNearbyMapInfos(location, 4)) {
+                    // Aturan scoring: +2 = tile musuh, +1 = bisa diwarnain, +0 = tidak perlu diwarnain ulang, +0 = wall/ruin
+                    if (!aoeTile.isWall() && !aoeTile.hasRuin() && !aoeTile.getPaint().isAlly()) {
+                        if (aoeTile.getPaint().isEnemy()) {
+                            score = score + 2;
+                        } else {
+                            score = score + 1;
+                        }
+                    }
+                }
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestTarget = location; // Koordinat yang kalau jadi titik pusat serangan, bisa ngecover banyak area
+                }
+            }
+            if (bestTarget != null && maxScore > 0) { // Serang kalo worth it aja
+                rc.attack(bestTarget);
+            }
+        }
+    }
+
+    /* ===== SPLASHER HELPERS ===== */
+    // Cari tower sekutu yang wilayah sekitarnya paling banyak belum diwarnain
+    static MapLocation findTowerToSupport(RobotController rc) throws GameActionException {
+        MapLocation best = null;
+        int maxUnpainted = 0; // Thresholder jumlah petak belum diwarnain terbanyak
+
+        for (int i = 0; i < towerCount; i++) {
+            MapLocation tower = alliedTowers[i];
+            if (!rc.canSenseLocation(tower)) { // Kalau di luar jangkauan
+                continue;
+            }
+
+            int unpaintedCount = 0; // Banyak tile yang belum diwarnain di sekitar tower ini
+            for (MapInfo tile : rc.senseNearbyMapInfos(tower, 8)) {
+                if (!tile.isWall() && !tile.hasRuin() && !tile.getPaint().isAlly()) {
+                    unpaintedCount++; // Nambah terus kalau belum tile itu bukan wall/ruin dan belum diwarnain sekutu
+                }
+            }
+
+            if (unpaintedCount > maxUnpainted) {
+                maxUnpainted = unpaintedCount;
+                best = tower;
+            }
+        }
+        return best;
     }
 }
