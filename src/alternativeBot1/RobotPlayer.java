@@ -127,7 +127,7 @@ public class RobotPlayer {
             } else {
                 robotAtRuin = null;
             }
-            
+
             // Parameter sudah jadi tower: ada robot dan tipenya tower
             boolean alreadyTower = (robotAtRuin != null && robotAtRuin.getType().isTowerType());
 
@@ -153,5 +153,41 @@ public class RobotPlayer {
                 }
             }
         }
+    }
+
+    /* ===== RELOAD PAINT ===== */
+    // Kalau robot lagi reload, hold semua action
+    static boolean tryReloadPaint(RobotController rc) throws GameActionException {
+        // Batas minimal cat sebelum reload: sisa 30% dari kapasitas
+        int threshold = (int)(rc.getType().paintCapacity * 0.3);
+        if (rc.getPaint() >= threshold) { // Kalau masih di atas batas, lanjut aja
+            return false;
+        }
+
+        MapLocation nearest = null; // Lokasi menara sekutu terdekat yang udah dicatat
+        int minDist = Integer.MAX_VALUE; // Set minimal distance ke maksimal value dari integer, supaya jarak-jarak lainnya bakal selalu di bawah dia
+        for (int i = 0; i < towerCount; i++) { // Tentuin tower terdekat
+            int d = rc.getLocation().distanceSquaredTo(alliedTowers[i]); // Jarak robot dengan suatu tower
+            if (d < minDist) {
+                minDist = d;
+                nearest = alliedTowers[i]; // Simpan tower terdekat
+            }
+        }
+        // Kalau gaada sama sekali tower yang udah dicatat di sekitar
+        if (nearest == null) {
+            return false;
+        }
+
+        if (minDist <= 2) { // Kondisi kalau robot udah sebelahan sama menara
+            if (rc.isActionReady()) { // Perhitungan reload cat
+                int need = rc.getType().paintCapacity - rc.getPaint();
+                if (need > 0 && rc.canTransferPaint(nearest, -need)) {
+                    rc.transferPaint(nearest, -need); // Robot ambil cat dari tower (hence the -)
+                }
+            }
+        } else if (rc.isMovementReady()) { // Kalau robot masih jauh dari tower terdekat 
+            smartMoveTo(rc, nearest); // Gerak ke arah tower
+        } // Di luar itu, robot diam di tempat sampe nunggu action ready di next round
+        return true; // Robot lagi reload
     }
 }
