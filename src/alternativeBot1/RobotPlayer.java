@@ -237,4 +237,89 @@ public class RobotPlayer {
             rc.upgradeTower(rc.getLocation());
         }
     }
+
+    /* ===== SOLDIER LOGIC ===== */
+    static void runSoldier(RobotController rc) throws GameActionException {
+        // Prioritas 1: reload cat kalau hampir habis
+        if (tryReloadPaint(rc)) {
+            return;
+        }
+
+        // Prioritas 2: Cek ruin yang langsung terlihat (dalam jarak pandang)
+        MapLocation myLocation = rc.getLocation();
+        MapInfo targetRuin = null; // Ruin yang bakal dikerjain nanti di round ini
+        for (MapInfo title : rc.senseNearbyMapInfos()) { // Scan semua tile dalam jangkauan
+            if (!tile.hasRuin()) { // Cari yang punya ruin
+                continue;
+            }
+            MapLocation location = tile.getMapLocation;
+            if (!rc.canSenseLocation(location)) {
+                continue;
+            }
+            RobotInfo robotAtLocation = rc.senseRobotAtLocation(location);
+            if (robotAtLocation == null) { // Kalau tidak ada robot di ruin, pasti belum ada menara
+                targetRuin = tile;
+                break;
+            }
+        }
+
+        if (targetRuin != null) {
+            buildTowerAtRuin(rc, targetRuin.getMapLocation());
+            return;
+        }
+
+        // Prioritas 3: cari ruin di memory yang paling jauh dari menara sekutu
+        MapLocation bestRuin = null; // Ruin terbaik buat disamperin nanti
+        int maxDistanceFromTowers = -1;
+
+        // Untuk setiap ruin di memory, hitung seberapa jauh ruin itu dari tower sekutu terdekat
+        // Pilih ruin yang jaraknya paling jauh
+        for (int i = 0; i < ruinCount; i++) {
+            if (knownRuins[i] == null) {
+                continue;
+            }
+            MapLocation ruin = knownRuins[i];
+
+            int minDistanceToTower = Integer.MAX_VALUE;
+            for (int j = 0; j < towerCount; j++) {
+                int distance = ruin.distanceSquaredTo(alliedTowers[i]);
+                if (distance < minDistanceToTower) {
+                    minDistanceToTower = distance;
+                }
+            }
+
+            if (minDistanceToTower > maxDistanceFromTowers) {
+                maxDistanceFromTowers = minDistanceToTower;
+                bestRuin = ruin;
+            }
+        }
+
+        // Kalau ada bestRuin
+        if (bestRuin != null) {
+            if (rc.isMovementReady()) { // Gerak ke dia
+                smartMoveTo(rc, bestRuin);
+            }
+            if (myLocation.distanceSquaredTo(bestRuin) <= 8) { // Kalau udah deket, coba bangun tower
+                MapInfo ruinInfo = null;
+                if (rc.canSenseLocation(bestRuin)) {
+                    ruinInfo = rc.senseMapInfo(bestRuin);
+                }
+                if (ruinInfo != null) {
+                    buildTowerAtRuin(rc, bestRuin);
+                }
+            }
+            if (rc.isActionReady()) { // Kalau action belum dipakai buat bangun tower, cat tile nya aja
+                paintCurrentTile(rc);
+                return;
+            }
+        }
+
+        // Prioritas 4: kalau gaada ruin di memory, kita explore
+        if (rc.isActionReady()) {
+            paintCurrentTile(rc); // Sambil explore sambil ngecat
+        }
+        if (rc.isMovementReady()) {
+            greedyExplore(rc);
+        }
+    }
 }
