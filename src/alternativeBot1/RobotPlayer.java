@@ -1,10 +1,12 @@
 package alternativeBot1;
 
 import battlecode.common.*;
+
+import java.time.Clock;
 import java.util.Random;
 
 public class RobotPlayer {
-    // Variabel global
+    /* ===== VARIABEL GLOBAL ===== */
     // Hitung sudah berapa ronde robot ini hidup
     static int turnCount = 0;
     
@@ -66,4 +68,90 @@ public class RobotPlayer {
         }
     }
 
+    /* ===== MEMORY MANAGEMENT ===== */
+    // Memory map
+    static void updateMapMemory(RobotController rc) throws GameActionException {
+        // Ambil semua tile yang terlihat dalam radius jarak pandang (4.47 petak)
+        for (MapInfo tile : rc.senseNearbyMapInfos()) {
+            MapLocation loc = tile.getMapLocation(); // Ambil dan simpan koordinat (x, y) nya
+            // Kalau pergerakan di luar batas koordinat, lanjut ke tile berikutnya
+            if (loc.x < 0 || loc.x >= 61 || loc.y < 0 || loc.y >= 61) {
+                continue;
+            }
+            if (tile.isWall() || tile.hasRuin()) {
+                mapMemory[loc.x][loc.y] = 4; // 4 menandakan wall/ruin di list
+            } else if (tile.getPaint().isAlly()) {
+                mapMemory[loc.x][loc.y] = 2; // 2 menandakan tile udah dicat oleh sekutu
+            } else if (tile.getPaint().isEnemy()) {
+                mapMemory[loc.x][loc.y] = 3; // 3 menandakan tile udah dicat oleh musuh
+            } else {
+                mapMemory[loc.x][loc.y] = 1; // 1 menandakan tile masih kosong
+            }
+        }
+    }
+
+    // Memory tower
+    static void updateTowerMemory(RobotController rc) throws GameActionException {
+        // Ambil semua robot sekutu dalam jarak pandang maksimal
+        for (RobotInfo ally : rc.senseNearbyRobots(-1, rc.getTeam())) {
+            if (!ally.getType().isTowerType()) { // Validasi tipe tower atau bukan
+                continue; // Kalau bukan, skip
+            }
+            boolean known = false; // Defaultnya menara ini belum tercatat
+            for (int i = 0; i < towerCount; i++) { // Cek satu per satu menara udah di list atau belum
+                if (alliedTowers[i].equals(ally.getLocation())) {
+                    known = true;
+                    break; // Kalau ketemu, stop
+                }
+            }
+            // Kalau ga ketemu dan list belum penuh, masukin ke list
+            if (!known && towerCount < 30) {
+                // Simpen lokasi menara ke indeks towerCount terus ditambah 1 (setelah dimasukin)
+                alliedTowers[towerCount++] = ally.getLocation();
+            }
+        }
+    }
+
+    // Memory ruin
+    static void updateRuinMemory(RobotController rc) throws GameActionException {
+        for (MapInfo tile : rc.senseNearbyMapInfos()) {
+            if (!tile.hasRuin()) { // Kalau ga ada ruin di tile itu, lanjut
+                continue;
+            }
+            MapLocation loc = tile.getMapLocation();
+            
+            // Kalau tile dalam jarak pandang, cek ada robot apa ngga di sana
+            RobotInfo robotAtRuin;
+            if (rc.canSenseLocation(loc)) {
+                robotAtRuin = rc.senseRobotAtLocation(loc); // Kalau ada robot, dapetin RobotInfo
+            } else {
+                robotAtRuin = null;
+            }
+            
+            // Parameter sudah jadi tower: ada robot dan tipenya tower
+            boolean alreadyTower = (robotAtRuin != null && robotAtRuin.getType().isTowerType());
+
+            // Kalau sudah jadi tower di tile ini, hapus dari list
+            if (alreadyTower) {
+                for (int i = 0; i < ruinCount; i++) {
+                    if (knownRuins[i] != null && knownRuins[i].equals(loc)) {
+                        knownRuins[i] = knownRuins[--ruinCount];
+                        knownRuins[ruinCount] = null;
+                        break;
+                    }
+                }
+            } else { // Kalau belum jadi tower, masukin ke list
+                boolean known = false;
+                for (int i = 0; i < ruinCount; i++) {
+                    if (knownRuins[i] != null && knownRuins[i].equals(loc)) {
+                        known = true;
+                        break;
+                    }
+                }
+                if (!known && ruinCount < 50) {
+                    knownRuins[ruinCount++] = loc;
+                }
+            }
+        }
+    }
 }
