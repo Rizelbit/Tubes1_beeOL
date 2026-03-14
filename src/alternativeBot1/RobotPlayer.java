@@ -1,4 +1,4 @@
-package alternativeBots1;
+package alternativeBot1;
 
 import battlecode.common.*;
 import java.util.Random;
