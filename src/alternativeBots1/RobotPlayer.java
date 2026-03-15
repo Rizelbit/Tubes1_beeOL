@@ -1,4 +1,4 @@
-package argha;
+package alternativeBots1;
 
 import battlecode.common.*;
 
