@@ -1,4 +1,7 @@
 # Tugas Besar 1 IF2211 Strategi Algoritma - Kelompok beeOL
+
+![cover](cover.png)
+
 Pemanfaatan Algoritma Greedy dalam pembuatan bot permainan Battlecode 2025.
 
 ## Deskripsi Singkat Algoritma Greedy
