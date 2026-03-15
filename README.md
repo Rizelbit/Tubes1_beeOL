@@ -37,9 +37,11 @@ Bot tim kami mengimplementasikan berbagai algoritma *greedy* yang berfokus pada 
    ```bash
    cd client
    ```
-4. Jalankan aplikasi klien/visualizer.
-5. Setelah aplikasi visualizer terbuka, pilih direktori proyek ini (direktori root `Tubes1_beeOL`, **bukan** sub-direktori `src`) untuk memuat *bot* ke dalam *visualizer*.
-6. Pilih bot `alternativeBots1` atau bot lainnya dari antarmuka permainan dan jalankan *match*.
+4. Jalankan aplikasi (cek ls pada client untuk mengetahui nama aplikasi).
+5. Setelah aplikasi terbuka, pilih direktori proyek ini (direktori root `Tubes1_beeOL`, **bukan** sub-direktori `src`) untuk memuat *bot* ke dalam *visualizer*.
+6. Pilih bot `mainbot` atau bot lainnya dari antarmuka permainan dan jalankan *match*.
+
+*TAMBAHAN*: Apabila anda menggunakan macOS, pastikan anda melakukan ``` tar -xzf "Stima Battle Client.app.tar.gz" ``` untuk dapat menjalankan aplikasinya.
 
 ## Anggota Kelompok
 **Kelompok beeOL:**
