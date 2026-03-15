@@ -1,11 +1,16 @@
 package alternativeBot1;
 
-import battlecode.common.*;
-
-import java.time.Clock;
 import java.util.Random;
 
-import javax.naming.directory.DirContext;
+import battlecode.common.Clock;
+import battlecode.common.Direction;
+import battlecode.common.GameActionException;
+import battlecode.common.MapInfo;
+import battlecode.common.MapLocation;
+import battlecode.common.PaintType;
+import battlecode.common.RobotController;
+import battlecode.common.RobotInfo;
+import battlecode.common.UnitType;
 
 public class RobotPlayer {
     /* ===== VARIABEL GLOBAL ===== */
@@ -250,11 +255,11 @@ public class RobotPlayer {
         // Prioritas 2: Cek ruin yang langsung terlihat (dalam jarak pandang)
         MapLocation myLocation = rc.getLocation();
         MapInfo targetRuin = null; // Ruin yang bakal dikerjain nanti di round ini
-        for (MapInfo title : rc.senseNearbyMapInfos()) { // Scan semua tile dalam jangkauan
+        for (MapInfo tile : rc.senseNearbyMapInfos()) { // Scan semua tile dalam jangkauan
             if (!tile.hasRuin()) { // Cari yang punya ruin
                 continue;
             }
-            MapLocation location = tile.getMapLocation;
+            MapLocation location = tile.getMapLocation();
             if (!rc.canSenseLocation(location)) {
                 continue;
             }
@@ -284,7 +289,7 @@ public class RobotPlayer {
 
             int minDistanceToTower = Integer.MAX_VALUE;
             for (int j = 0; j < towerCount; j++) {
-                int distance = ruin.distanceSquaredTo(alliedTowers[i]);
+                int distance = ruin.distanceSquaredTo(alliedTowers[j]);
                 if (distance < minDistanceToTower) {
                     minDistanceToTower = distance;
                 }
@@ -312,8 +317,8 @@ public class RobotPlayer {
             }
             if (rc.isActionReady()) { // Kalau action belum dipakai buat bangun tower, cat tile nya aja
                 paintCurrentTile(rc);
-                return;
             }
+            return;
         }
 
         // Prioritas 4: kalau gaada ruin di memory, kita explore
@@ -484,7 +489,7 @@ public class RobotPlayer {
             MapLocation bestTarget = null;
             int maxScore = 0;
             for (MapInfo tile : rc.senseNearbyMapInfos(rc.getType().actionRadiusSquared)) {
-                if (!tile.getPaint().isEnemy() || rc.canAttack(tile.getMapLocation())) {
+                if (!tile.getPaint().isEnemy() || !rc.canAttack(tile.getMapLocation())) {
                     continue;
                 }
                 // Sistem scoring: default kalau tile punya musuh = 1, +2 = kalau tile sekutu sebelahan sama tile musuh (perbatasan)
@@ -635,7 +640,7 @@ public class RobotPlayer {
         if (bestDirection != null) {
             rc.move(bestDirection);
             visitedTiles[visitedIndex] = rc.getLocation();
-            visitedIndex = (visitedIndex + 1) & visitedTiles.length;
+            visitedIndex = (visitedIndex + 1) % visitedTiles.length;
         }
     }
 }
