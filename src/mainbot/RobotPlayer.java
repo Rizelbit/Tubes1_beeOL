@@ -1,4 +1,4 @@
-package mainbot;
+package mainBot;
 
 import battlecode.common.*;
 import java.util.Random;
