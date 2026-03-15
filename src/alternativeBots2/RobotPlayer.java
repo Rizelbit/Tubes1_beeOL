@@ -16,14 +16,14 @@ public class RobotPlayer {
     /* ===== VARIABEL GLOBAL ===== */
     // Hitung sudah berapa ronde robot ini hidup
     static int turnCount = 0;
-    
+
     // Random number generator buat probability spawn tower dan variasi pergerakan robot (supaya ga ke arah situ-situ aja)
     static final Random randomNumberGenerator = new Random(1234);
 
     // Array berisi 8 arah gerak yang memungkinkan
     static final Direction[] directions = {
-        Direction.NORTH, Direction.NORTHEAST, Direction.EAST, Direction.SOUTHEAST,
-        Direction.SOUTH, Direction.SOUTHWEST, Direction.WEST, Direction.NORTHWEST,
+            Direction.NORTH, Direction.NORTHEAST, Direction.EAST, Direction.SOUTHEAST,
+            Direction.SOUTH, Direction.SOUTHWEST, Direction.WEST, Direction.NORTHWEST,
     };
 
     // Array 2D buat robot nyimpen history tile map yang udah dilewatin
@@ -126,7 +126,7 @@ public class RobotPlayer {
                 continue;
             }
             MapLocation loc = tile.getMapLocation();
-            
+
             // Kalau tile dalam jarak pandang, cek ada robot apa ngga di sana
             RobotInfo robotAtRuin;
             if (rc.canSenseLocation(loc)) {
@@ -192,7 +192,7 @@ public class RobotPlayer {
                     rc.transferPaint(nearest, -need); // Robot ambil cat dari tower (hence the -)
                 }
             }
-        } else if (rc.isMovementReady()) { // Kalau robot masih jauh dari tower terdekat 
+        } else if (rc.isMovementReady()) { // Kalau robot masih jauh dari tower terdekat
             moveToTarget(rc, nearest); // Gerak ke arah tower
         } // Di luar itu, robot diam di tempat sampe nunggu action ready di next round
         return true; // Robot lagi reload
@@ -304,7 +304,7 @@ public class RobotPlayer {
         // Kalau ada bestRuin
         if (bestRuin != null) {
             if (rc.isMovementReady()) { // Gerak ke si bestRuin
-                moveToTarget(rc, bestRuin); 
+                moveToTarget(rc, bestRuin);
             }
             if (myLocation.distanceSquaredTo(bestRuin) <= 8) { // Kalau udah deket, coba bangun tower
                 MapInfo ruinInfo = null;
@@ -459,7 +459,7 @@ public class RobotPlayer {
 
         // Mopper udah ngelakuin suatu aksi belum di round ini
         boolean acted = false;
-        
+
         // Prioritas 1: mopper swing kalau ada musuh di sekitar
         if (rc.isActionReady()) {
             for (Direction dir : directions) {
@@ -474,7 +474,7 @@ public class RobotPlayer {
         // Prioritas 2: isi cat ke sekutu yang hampir habis
         if (rc.isActionReady() && !acted && rc.getPaint() > 50) { // Kalau cat mopper masih cukup dan belum beraksi di round ini
             for (RobotInfo ally : rc.senseNearbyRobots(2, rc.getTeam())) { // Cek ada robot sekutu di tile sebelah apa ngga
-                if (ally.getPaintAmount() < ally.getType().paintCapacity * 0.2) { 
+                if (ally.getPaintAmount() < ally.getType().paintCapacity * 0.2) {
                     if (rc.canTransferPaint(ally.getLocation(), 20)) {
                         rc.transferPaint(ally.getLocation(), 20); // Mopper memberi 20 cat ke robot sekutu (hence the +)
                         acted = true; // Udah beraksi di round ini
@@ -532,7 +532,7 @@ public class RobotPlayer {
                 } else if (tileType == 3) { // +50 = tile musuh (mau dihapus catnya)
                     score = score + 50;
                 } else if (tileType == 1) { // +10 = tile kosong, bisa dilewatin aja tapi ga prioritas juga
-                    score = score + 10; 
+                    score = score + 10;
                 }
             }
 
@@ -550,7 +550,7 @@ public class RobotPlayer {
                 bestDirection =  dir;
             }
         }
-        
+
         // Perbarui lit koordinat tile yang udah dilewatin
         if (bestDirection != null) {
             rc.move(bestDirection);
