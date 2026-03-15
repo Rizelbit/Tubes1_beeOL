@@ -442,4 +442,113 @@ public class RobotPlayer {
         }
         return best;
     }
+
+    /* ===== MOPPER LOGIC ===== */
+    static void runMopper(RobotController rc) throws GameActionException {
+        // Reload cat kalau bener-bener hampir habis aja
+        if (rc.getPaint() < 10 && tryReloadPaint(rc)) {
+            return;
+        }
+
+        // Mopper udah ngelakuin suatu aksi belum di round ini
+        boolean acted = false;
+        
+        // Prioritas 1: mopper swing kalau ada musuh di sekitar
+        if (rc.isActionReady()) {
+            for (Direction dir : directions) {
+                if (rc.canMopSwing(dir)) {
+                    rc.mopSwing(dir); // Kalau ada musuh di sekitar (2 petak lurus depan, 2 petak sebelah kirinya, dan 2 petak sebelah kanannya), swing ke arah dia
+                    acted = true; // Aksi udah kepake sekali
+                    break;
+                }
+            }
+        }
+
+        // Prioritas 2: isi cat ke sekutu yang hampir habis
+        if (rc.isActionReady() && !acted && rc.getPaint() > 50) { // Kalau cat mopper masih cukup dan belum beraksi di round ini
+            for (RobotInfo ally : rc.senseNearbyRobots(2, rc.getTeam())) { // Cek ada robot sekutu di tile sebelah apa ngga
+                if (ally.getPaintAmount() < ally.getType().paintCapacity * 0.2) { 
+                    if (rc.canTransferPaint(ally.getLocation(), 20)) {
+                        rc.transferPaint(ally.getLocation(), 20); // Mopper memberi 20 cat ke robot sekutu (hence the +)
+                        acted = true; // Udah beraksi di round ini
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Prioritas 3: hapus cat musuh
+        if (rc.isActionReady() && !acted) {
+            MapLocation bestTarget = null;
+            int maxScore = 0;
+            for (MapInfo tile : rc.senseNearbyMapInfos(rc.getType().actionRadiusSquared)) {
+                if (!tile.getPaint().isEnemy() || rc.canAttack(tile.getMapLocation())) {
+                    continue;
+                }
+                // Sistem scoring: default kalau tile punya musuh = 1, +2 = kalau tile sekutu sebelahan sama tile musuh (perbatasan)
+                int score = 1;
+                for (MapInfo neighbor : rc.senseNearbyMapInfos(tile.getMapLocation(), 2)) {
+                    if (neighbor.getPaint().isAlly()) {
+                        score = score + 2;
+                    }
+                }
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestTarget = tile.getMapLocation();
+                }
+            }
+            if (bestTarget != null) {
+                rc.attack(bestTarget);
+            }
+        }
+        if (rc.isMovementReady()) {
+            patrolAllyTerritory(rc);
+        }
+    }
+
+    /* ===== MOPPER HELPERS ===== */
+    static void patrolAllyTerritory(RobotController rc) throws GameActionException {
+        Direction bestDir = null;
+        int maxScore = -99999;
+
+        for (Direction dir : directions) {
+            if (!rc.canMove(dir)) {
+                continue;
+            }
+            MapLocation nextLocation = rc.getLocation().add(dir);
+            int score = 0;
+
+            if (nextLocation.x > 0 && nextLocation.x < 61 && nextLocation.y >= 0 && nextLocation.y < 61) {
+                int tileType = mapMemory[nextLocation.x][nextLocation.y]; // Tile yang mau dituju
+                if (tileType == 2) { // +30 = tile sekutu, boleh tapi ga prioritas utama
+                    score = score + 30;
+                } else if (tileType == 3) { // +50 = tile musuh (mau dihapus catnya)
+                    score = score + 50;
+                } else if (tileType == 1) { // +10 = tile kosong, bisa dilewatin aja tapi ga prioritas juga
+                    score = score + 10; 
+                }
+            }
+
+            // Biar ga jalan ke arah tile yang baru dikunjungi, kasih -100 pas mau mencoba jalan ke arah itu
+            for (int i = 0; i < visitedTiles.length; i++) {
+                if (visitedTiles[i] != null && visitedTiles[i].equals(nextLocation)) {
+                    score = score - 100;
+                }
+            }
+
+            // Biar arah geraknya ngacak (kepake di kalau ada 2 atau lebih arah yang scorenya sama)
+            score = score + randomNumberGenerator.nextInt(5);
+            if (score > maxScore) {
+                maxScore = score;
+                bestDir =  dir;
+            }
+        }
+        
+        // Perbarui lit koordinat tile yang udah dilewatin
+        if (bestDir != null) {
+            rc.move(bestDir);
+            visitedTiles[visitedIndex] = rc.getLocation();
+            visitedIndex = (visitedIndex + 1) % visitedTiles.length; // Kalau list udah penuh, balik lagi timpa yang awal
+        }
+    }
 }
