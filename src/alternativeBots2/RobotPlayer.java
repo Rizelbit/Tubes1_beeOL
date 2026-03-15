@@ -1,938 +1,646 @@
 package alternativeBots2;
-// package argha;
 
-import battlecode.common.*;
-
-// import java.util.Arrays;
-// import java.util.HashMap;
-// import java.util.HashSet;
-// import java.util.Map;
 import java.util.Random;
-// import java.util.Set;
 
+import battlecode.common.Clock;
+import battlecode.common.Direction;
+import battlecode.common.GameActionException;
+import battlecode.common.MapInfo;
+import battlecode.common.MapLocation;
+import battlecode.common.PaintType;
+import battlecode.common.RobotController;
+import battlecode.common.RobotInfo;
+import battlecode.common.UnitType;
 
-/**
- * RobotPlayer is the class that describes your main robot strategy.
- * The run() method inside this class is like your main function: this is what we'll call once your robot
- * is created!
- */
 public class RobotPlayer {
-    /**
-     * We will use this variable to count the number of turns this robot has been alive.
-     * You can use static variables like this to save any information you want. Keep in mind that even though
-     * these variables are static, in Battlecode they aren't actually shared between your robots.
-     */
+    /* ===== VARIABEL GLOBAL ===== */
+    // Hitung sudah berapa ronde robot ini hidup
     static int turnCount = 0;
 
-    /**
-     * A random number generator.
-     * We will use this RNG to make some random moves. The Random class is provided by the java.util.Random
-     * import at the top of this file. Here, we *seed* the RNG with a constant number (6147); this makes sure
-     * we get the same sequence of numbers every time this code is run. This is very useful for debugging!
-     */
-    static final Random rng = new Random(6147);
+    // Random number generator buat probability spawn tower dan variasi pergerakan robot (supaya ga ke arah situ-situ aja)
+    static final Random randomNumberGenerator = new Random(1234);
 
-    /** Array containing all the possible movement directions. */
+    // Array berisi 8 arah gerak yang memungkinkan
     static final Direction[] directions = {
-        Direction.NORTH,
-        Direction.NORTHEAST,
-        Direction.EAST,
-        Direction.SOUTHEAST,
-        Direction.SOUTH,
-        Direction.SOUTHWEST,
-        Direction.WEST,
-        Direction.NORTHWEST,
+            Direction.NORTH, Direction.NORTHEAST, Direction.EAST, Direction.SOUTHEAST,
+            Direction.SOUTH, Direction.SOUTHWEST, Direction.WEST, Direction.NORTHWEST,
     };
 
-    // PENJELASAN: Counter untuk mengatur giliran spawn unit di tower (dipakai sistem 3 fase).
-    // Setiap kali tower berhasil spawn unit, counter ini bertambah satu.
-    static int spawnCounter = 0;
+    // Array 2D buat robot nyimpen history tile map yang udah dilewatin
+    // Keterangan nilai elemen: 0 = unknown, 1 = kosong, 2 = udah dicat sekutu, 3 = udah dicat musuh, 4 = tembok/ruin
+    static int[][] mapMemory = new int[61][61];
 
-    // PENJELASAN: Circular buffer untuk menyimpan 30 lokasi terakhir yang dikunjungi robot.
-    // Digunakan sebagai mekanisme anti-loop agar robot tidak berputar di tempat yang sama.
-    static MapLocation[] visitedTiles = new MapLocation[30];
+    // List yang isinya 40 tiles terakhir yang dikunjungi robot
+    static MapLocation[] visitedTiles = new MapLocation[40];
+
+    // Menunjuk indeks di list yang akan ditimpa (karena maksimal 40, pasti bakal ngulang dari awal kalau udah penuh)
     static int visitedIndex = 0;
 
-    // PENJELASAN: Array untuk menyimpan lokasi tower sekutu yang pernah terlihat oleh robot.
-    // Digunakan agar robot bisa kembali ke tower untuk isi ulang cat meskipun tower sudah berada di luar jangkauan sensor saat ini.
-    static MapLocation[] knownTowers = new MapLocation[30];
-    static int knownTowerCount = 0;
+    // Daftar koordinat tower sekutu yang pernah dilihat robot
+    static MapLocation[] alliedTowers = new MapLocation[30];
 
-    /**
-     * run() is the method that is called when a robot is instantiated in the Battlecode world.
-     * It is like the main function for your robot. If this method returns, the robot dies!
-     *
-     * @param rc  The RobotController object. You use it to perform actions from this robot, and to get
-     *            information on its current status. Essentially your portal to interacting with the world.
-     **/
-    @SuppressWarnings("unused")
+    // Berapa tower yang udah tercatat
+    static int towerCount = 0;
+
+    // Daftar koordinat ruins yang pernah dilihat robot dan belum jadi tower
+    static MapLocation[] knownRuins = new MapLocation[50];
+
+    // Berapa ruin yang udah tercatat
+    static int ruinCount = 0;
+
+    // Fungsi run
     public static void run(RobotController rc) throws GameActionException {
-        // Hello world! Standard output is very useful for debugging.
-        // Everything you say here will be directly viewable in your terminal when you run a match!
-        System.out.println("I'm alive");
-
-        // You can also use indicators to save debug notes in replays.
-        rc.setIndicatorString("Hello world!");
-
-        while (true) {
-            // This code runs during the entire lifespan of the robot, which is why it is in an infinite
-            // loop. If we ever leave this loop and return from run(), the robot dies! At the end of the
-            // loop, we call Clock.yield(), signifying that we've done everything we want to do.
-
-            turnCount += 1;  // We have now been alive for one more turn!
-
-            // Try/catch blocks stop unhandled exceptions, which cause your robot to explode.
+        while (true) { // --> Selama robot masih hidup
+            turnCount = turnCount + 1;
             try {
-                // The same run() function is called for every robot on your team, even if they are
-                // different types. Here, we separate the control depending on the UnitType, so we can
-                // use different strategies on different robots. If you wish, you are free to rewrite
-                // this into a different control structure!
+                updateMapMemory(rc); // Update ingatan tentang kondisi peta berdasarkan apa yang terlihat sekarang
+                updateTowerMemory(rc); // Update daftar tower sekutu yang diketahui
+                updateRuinMemory(rc); // Update daftar ruin yang belum jadi menara
 
-                // PENJELASAN: Setiap giliran, perbarui daftar tower sekutu yang diketahui agar robot selalu tahu ke mana harus kembali untuk isi ulang cat.
-                rememberTowers(rc);
-
-                switch (rc.getType()){
-                    case SOLDIER: runSoldier(rc); break; 
+                switch (rc.getType()) { // Jalanin fungsi yang sesuai tipe robot
+                    case SOLDIER: runSoldier(rc); break;
+                    case SPLASHER: runSplasher(rc); break;
                     case MOPPER: runMopper(rc); break;
-                    case SPLASHER: runSplasher(rc); break; // Consider upgrading examplefuncsplayer to use splashers!
-                    default: runTower(rc); break;
-                    }
+                    default: runTower(rc); break; // Langsung semua tipe tower
                 }
-             catch (GameActionException e) {
-                // Oh no! It looks like we did something illegal in the Battlecode world. You should
-                // handle GameActionExceptions judiciously, in case unexpected events occur in the game
-                // world. Remember, uncaught exceptions cause your robot to explode!
+            } catch (GameActionException e) {
                 System.out.println("GameActionException");
                 e.printStackTrace();
-
             } catch (Exception e) {
-                // Oh no! It looks like our code tried to do something bad. This isn't a
-                // GameActionException, so it's more likely to be a bug in our code.
                 System.out.println("Exception");
                 e.printStackTrace();
-
             } finally {
-                // Signify we've done everything we want to do, thereby ending our turn.
-                // This will make our code wait until the next turn, and then perform this loop again.
-                Clock.yield();
+                Clock.yield(); // Tanda selesai giliran robot ini
             }
-            // End of loop: go back to the top. Clock.yield() has ended, so it's time for another turn!
         }
-
-        // Your code should never reach here (unless it's intentional)! Self-destruction imminent...
     }
 
-    /**
-     * Run a single turn for towers.
-     * This code is wrapped inside the infinite loop in run(), so it is called once per turn.
-     */
-    public static void runTower(RobotController rc) throws GameActionException{
-        // PENJELASAN: Upgrade tower sesegera mungkin agar menghasilkan lebih banyak cat per ronde dan memiliki damage lebih tinggi. Upgrade adalah investasi jangka panjang.
-        if (rc.canUpgradeTower(rc.getLocation())) {
-            rc.upgradeTower(rc.getLocation());
-        }
-
-        // PENJELASAN: Tower menyerang musuh yang terdeteksi di sekitarnya terlebih dahulu sebelum melakukan aksi lain. Ini melindungi area spawn dari serangan musuh.
-        RobotInfo[] enemies = rc.senseNearbyRobots(-1, rc.getTeam().opponent());
-        for (RobotInfo enemy : enemies) {
-            if (rc.canAttack(enemy.location)) {
-                rc.attack(enemy.location);
-                break;
+    /* ===== MEMORY MANAGEMENT ===== */
+    // Memory map
+    static void updateMapMemory(RobotController rc) throws GameActionException {
+        // Ambil semua tile yang terlihat dalam radius jarak pandang (4.47 petak)
+        for (MapInfo tile : rc.senseNearbyMapInfos()) {
+            MapLocation loc = tile.getMapLocation(); // Ambil dan simpan koordinat (x, y) nya
+            // Kalau pergerakan di luar batas koordinat, lanjut ke tile berikutnya
+            if (loc.x < 0 || loc.x >= 61 || loc.y < 0 || loc.y >= 61) {
+                continue;
+            }
+            if (tile.isWall() || tile.hasRuin()) {
+                mapMemory[loc.x][loc.y] = 4; // 4 menandakan wall/ruin di list
+            } else if (tile.getPaint().isAlly()) {
+                mapMemory[loc.x][loc.y] = 2; // 2 menandakan tile udah dicat oleh sekutu
+            } else if (tile.getPaint().isEnemy()) {
+                mapMemory[loc.x][loc.y] = 3; // 3 menandakan tile udah dicat oleh musuh
+            } else {
+                mapMemory[loc.x][loc.y] = 1; // 1 menandakan tile masih kosong
             }
         }
+    }
 
-        // PENJELASAN: Tower secara aktif mengisi ulang cat robot sekutu yang cadangan catnya sudah di bawah 1/3 kapasitas maksimal. Ini mencegah robot kehabisan cat di lapangan dan terkena cooldown penalty akibat berdiri di wilayah netral.
-        RobotInfo[] allies = rc.senseNearbyRobots(-1, rc.getTeam());
-        for (RobotInfo ally : allies) {
-            if (ally.type == UnitType.SOLDIER || ally.type == UnitType.MOPPER || ally.type == UnitType.SPLASHER) {
-                if (ally.paintAmount < ally.type.paintCapacity / 3) {
-                    int give = Math.min(rc.getPaint() / 4, ally.type.paintCapacity - ally.paintAmount);
-                    if (give > 5 && rc.canTransferPaint(ally.location, give)) {
-                        rc.transferPaint(ally.location, give);
+    // Memory tower
+    static void updateTowerMemory(RobotController rc) throws GameActionException {
+        // Ambil semua robot sekutu dalam jarak pandang maksimal
+        for (RobotInfo ally : rc.senseNearbyRobots(-1, rc.getTeam())) {
+            if (!ally.getType().isTowerType()) { // Validasi tipe tower atau bukan
+                continue; // Kalau bukan, skip
+            }
+            boolean known = false; // Defaultnya menara ini belum tercatat
+            for (int i = 0; i < towerCount; i++) { // Cek satu per satu menara udah di list atau belum
+                if (alliedTowers[i].equals(ally.getLocation())) {
+                    known = true;
+                    break; // Kalau ketemu, stop
+                }
+            }
+            // Kalau ga ketemu dan list belum penuh, masukin ke list
+            if (!known && towerCount < 30) {
+                // Simpen lokasi menara ke indeks towerCount terus ditambah 1 (setelah dimasukin)
+                alliedTowers[towerCount++] = ally.getLocation();
+            }
+        }
+    }
+
+    // Memory ruin
+    static void updateRuinMemory(RobotController rc) throws GameActionException {
+        for (MapInfo tile : rc.senseNearbyMapInfos()) {
+            if (!tile.hasRuin()) { // Kalau ga ada ruin di tile itu, lanjut
+                continue;
+            }
+            MapLocation loc = tile.getMapLocation();
+
+            // Kalau tile dalam jarak pandang, cek ada robot apa ngga di sana
+            RobotInfo robotAtRuin;
+            if (rc.canSenseLocation(loc)) {
+                robotAtRuin = rc.senseRobotAtLocation(loc); // Kalau ada robot, dapetin RobotInfo
+            } else {
+                robotAtRuin = null;
+            }
+
+            // Parameter sudah jadi tower: ada robot dan tipenya tower
+            boolean alreadyTower = (robotAtRuin != null && robotAtRuin.getType().isTowerType());
+
+            // Kalau sudah jadi tower di tile ini, hapus dari list
+            if (alreadyTower) {
+                for (int i = 0; i < ruinCount; i++) {
+                    if (knownRuins[i] != null && knownRuins[i].equals(loc)) {
+                        knownRuins[i] = knownRuins[--ruinCount];
+                        knownRuins[ruinCount] = null;
                         break;
                     }
                 }
-            }
-        }
-
-        // PENJELASAN: Hitung jumlah petak cat musuh di sekitar tower sebagai indikator ancaman.
-        // Jika lebih dari 8 petak musuh terdeteksi, tower akan spawn mopper secara darurat untuk membersihkan cat musuh sebelum menyebar lebih luas.
-        MapInfo[] nearbyTiles = rc.senseNearbyMapInfos();
-        int enemyPaintCount = 0;
-        for (MapInfo tile : nearbyTiles) {
-            if (tile.getPaint().isEnemy()) {
-                enemyPaintCount++;
-            }
-        }
-
-        // PENJELASAN: Tower tidak spawn unit jika cadangan catnya di bawah 200.
-        // Ini menghemat cat untuk supply ke robot sekutu dan regenerasi alami tower.
-        if (rc.getPaint() < 200) {
-            // Read incoming messages
-            Message[] messages = rc.readMessages(-1);
-            for (Message m : messages) {
-                System.out.println("Tower received message: '#" + m.getSenderID() + " " + m.getBytes());
-            }
-            // TODO: can we attack other bots?
-            return;
-        }
-
-        // PENJELASAN: Sistem spawn 3 fase berdasarkan nomor ronde untuk mengoptimalkan komposisi pasukan.
-        // - Fase 1 (ronde 0-100)  : PURE soldier untuk ekspansi wilayah secepat mungkin. Splasher TIDAK dispawn karena belum ada wilayah musuh untuk direclaim. Splasher mahal (400 chips + 300 paint) dan tidak efektif di awal game.
-        // - Fase 2 (ronde 100-300): Mulai campurkan splasher setelah ada wilayah musuh. Rasio: 40% splasher, 50% soldier, 10% mopper.
-        // - Fase 3 (ronde 300+)   : Splasher-heavy untuk mendominasi dan reclaim wilayah musuh. Rasio: 60% splasher, 20% soldier, 20% mopper.
-        // Jika banyak cat musuh terdeteksi (> 8), selalu spawn mopper terlebih dahulu.
-        UnitType toSpawn;
-        if (enemyPaintCount > 8) {
-            // PENJELASAN: Kondisi darurat, terlalu banyak cat musuh di sekitar, spawn mopper untuk membersihkan ancaman aktif segera.
-            toSpawn = UnitType.MOPPER;
-        } else if (rc.getRoundNum() < 100) {
-            // PENJELASAN: Fase 1, pure soldier untuk ekspansi cepat.
-            // Di awal game, setiap chips harus diinvestasikan ke unit yang langsung bisa mewarnai wilayah.
-            // Splasher tidak ada gunanya jika belum ada cat musuh untuk dihapus.
-            toSpawn = UnitType.SOLDIER;
-        } else if (rc.getRoundNum() < 300) {
-            // PENJELASAN: Fase 2, mulai campurkan splasher untuk reclaim wilayah musuh.
-            // Rasio: 50% soldier (tetap ekspansi), 40% splasher (mulai reclaim), 10% mopper.
-            int r = spawnCounter % 10;
-            if (r < 4) toSpawn = UnitType.SPLASHER;
-            else if (r < 9) toSpawn = UnitType.SOLDIER;
-            else toSpawn = UnitType.MOPPER;
-        } else {
-            // PENJELASAN: Fase 3, splasher dominasi untuk merebut kembali wilayah musuh secara masif.
-            // Rasio: 60% splasher, 20% soldier, 20% mopper.
-            int r = spawnCounter % 10;
-            if (r < 6) toSpawn = UnitType.SPLASHER;
-            else if (r < 8) toSpawn = UnitType.SOLDIER;
-            else toSpawn = UnitType.MOPPER;
-        }
-
-        // PENJELASAN: Pilih lokasi spawn terbaik secara greedy berdasarkan situasi lapangan.
-        // Skor lokasi spawn = jumlah cat musuh di sekitar lokasi - jumlah robot sekutu di sekitar.
-        // Ini memastikan unit baru dispawn ke arah yang paling membutuhkan perhatian, bukan ke arah yang sudah ramai oleh robot sekutu sendiri (menghindari penumpukan).
-        Direction bestSpawnDir = null;
-        int bestSpawnScore = Integer.MIN_VALUE;
-        for (Direction d : directions) {
-            MapLocation spawnLoc = rc.getLocation().add(d);
-            if (!rc.canBuildRobot(toSpawn, spawnLoc)) continue;
-
-            int spawnScore = 0;
-            for (MapInfo t : nearbyTiles) {
-                if (spawnLoc.distanceSquaredTo(t.getMapLocation()) <= 4) {
-                    if (t.getPaint().isEnemy()) spawnScore++;
-                }
-            }
-            RobotInfo[] allyNearSpawn = rc.senseNearbyRobots(spawnLoc, 4, rc.getTeam());
-            spawnScore -= allyNearSpawn.length;
-
-            if (spawnScore > bestSpawnScore) {
-                bestSpawnScore = spawnScore;
-                bestSpawnDir = d;
-            }
-        }
-        if (bestSpawnDir != null) {
-            rc.buildRobot(toSpawn, rc.getLocation().add(bestSpawnDir));
-            spawnCounter++;
-        }
-
-        // Read incoming messages
-        Message[] messages = rc.readMessages(-1);
-        for (Message m : messages) {
-            System.out.println("Tower received message: '#" + m.getSenderID() + " " + m.getBytes());
-        }
-
-        // TODO: can we attack other bots?
-    }
-
-
-    /**
-     * Run a single turn for a Soldier.
-     * This code is wrapped inside the infinite loop in run(), so it is called once per turn.
-     */
-    public static void runSoldier(RobotController rc) throws GameActionException{
-        MapLocation myLoc = rc.getLocation();
-        int curPaint = rc.getPaint();
-        int maxPaint = rc.getType().paintCapacity;
-
-        // Sense information about all visible nearby tiles.
-        MapInfo[] nearbyTiles = rc.senseNearbyMapInfos();
-
-        // PENJELASAN: Soldier hanya mencari ruins yang SANGAT DEKAT (distanceSquared <= 4).
-        // Soldier berperan sebagai "Border Guard" (penjaga perbatasan), bukan "Tower Hunter".
-        // Jika soldier terus mengejar ruins yang jauh, dia meninggalkan wilayah sekutu tanpa penjagaan. Dengan batasan ini, soldier hanya membangun tower jika kebetulan lewat dekat ruins.
-        // Search for a nearby ruin to complete.
-        MapLocation nearestRuin = null;
-        int nearestRuinDist = Integer.MAX_VALUE;
-        for (MapInfo tile : nearbyTiles){
-            if (tile.hasRuin()){
-                MapLocation ruinLoc = tile.getMapLocation();
-                RobotInfo robotAtRuin = rc.senseRobotAtLocation(ruinLoc);
-                if (robotAtRuin == null) {
-                    int dist = myLoc.distanceSquaredTo(ruinLoc);
-                    // PENJELASAN: Filter ketat, hanya lirik ruins yang distanceSquared <= 4 (artinya hanya 1-2 langkah dari posisi saat ini).
-                    if (dist <= 4 && dist < nearestRuinDist) {
-                        nearestRuinDist = dist;
-                        nearestRuin = ruinLoc;
-                    }
-                }
-            }
-        }
-
-        // PENJELASAN: Sistem refill cat yang dinamis, robot mulai balik ke tower saat cat sudah di bawah 30% kapasitas. Ini memastikan robot tidak kehabisan cat di tengah lapangan dan terkena penalti cooldown maupun -20 HP per ronde.
-        MapLocation nearestTower = findNearestKnownTower(rc);
-        double paintRatio = (double) curPaint / maxPaint;
-        if (paintRatio < 0.30 && nearestTower != null) {
-            if (myLoc.distanceSquaredTo(nearestTower) <= 2) {
-                // PENJELASAN: Robot sudah adjacent ke tower, langsung tarik cat penuh.
-                int need = maxPaint - curPaint;
-                if (rc.canTransferPaint(nearestTower, -need)) {
-                    rc.transferPaint(nearestTower, -need);
-                    curPaint = rc.getPaint();
-                    paintRatio = (double) curPaint / maxPaint;
-                }
-            } else if (rc.isMovementReady()) {
-                // PENJELASAN: Cat hampir habis tapi belum sampai tower, navigasi ke tower sambil tetap mewarnai petak di jalan agar tidak membuang giliran.
-                navigateToward(rc, nearestTower);
-                paintCurrentTile(rc);
-                return;
-            }
-        }
-
-        // PENJELASAN: Bangun tower hanya jika ruins kebetulan sangat dekat (distSq <= 4).
-        // Soldier tidak mengubah rute perjalanannya khusus untuk mengejar ruins yang jauh.
-        if (nearestRuin != null) {
-            UnitType tt = chooseTowerType(rc);
-
-            if (nearestRuinDist <= 2) {
-                // PENJELASAN: Robot sudah adjacent ke ruins, langsung eksekusi pembangunan tower:
-                // 1. Tandai pola 5x5 di sekitar ruins dengan markTowerPattern()
-                // 2. Warnai petak-petak yang ditandai sesuai pola warna tower
-                // 3. Selesaikan tower dengan completeTowerPattern() jika pola sudah lengkap
-                if (rc.canMarkTowerPattern(tt, nearestRuin)) {
-                    rc.markTowerPattern(tt, nearestRuin);
-                }
-                if (rc.canCompleteTowerPattern(tt, nearestRuin)) {
-                    rc.completeTowerPattern(tt, nearestRuin);
-                    nearestRuin = null;
-                } else if (rc.isActionReady()) {
-                    // Fill in any spots in the pattern with the appropriate paint.
-                    for (MapInfo pt : rc.senseNearbyMapInfos(nearestRuin, 8)) {
-                        if (pt.getMark() != pt.getPaint() && pt.getMark() != PaintType.EMPTY) {
-                            boolean sec = pt.getMark() == PaintType.ALLY_SECONDARY;
-                            if (rc.canAttack(pt.getMapLocation())) {
-                                rc.attack(pt.getMapLocation(), sec);
-                                break;
-                            }
-                        }
-                    }
-                    // Complete the ruin if we can.
-                    if (rc.canCompleteTowerPattern(tt, nearestRuin)) {
-                        rc.completeTowerPattern(tt, nearestRuin);
-                        nearestRuin = null;
-                    }
-                    // PENJELASAN: Fokus sepenuhnya ke pembangunan tower saat sedang adjacent.
-                    // Jangan buang aksi untuk hal lain sampai tower selesai dibangun.
-                    return;
-                }
-            } else {
-                // PENJELASAN: Ruins terdeteksi di jarak 3-4 (sangat dekat tapi belum adjacent), navigasi ke sana sambil tetap mewarnai petak di jalan.
-                if (rc.isMovementReady()) {
-                    navigateToward(rc, nearestRuin);
-                    paintCurrentTile(rc);
-                    return;
-                }
-            }
-        }
-
-        // PENJELASAN: Sistem pewarnaan dengan prioritas "jaga wilayah", ini adalah heuristic utama bot ini.
-        // Skor pewarnaan (greedy, pilih target dengan skor tertinggi):
-        // - Skor 5: cat musuh yang BERSEBELAHAN dengan wilayah sekutu = ancaman aktif, hapus segera!
-        // - Skor 2: cat musuh yang jauh dari wilayah sekutu = ancaman pasif
-        // - Skor 1: petak kosong yang bisa diwarnai = ekspansi biasa
-        // - Skor 0: petak sekutu = skip, tidak perlu diwarnai ulang (hemat aksi)
-        // Try to paint beneath us as we walk to avoid paint penalties.
-        // Avoiding wasting paint by re-painting our own tiles.
-        if (rc.isActionReady()) {
-            MapInfo curTile = rc.senseMapInfo(rc.getLocation());
-            if (!curTile.getPaint().isAlly() && rc.canAttack(rc.getLocation())) {
-                // PENJELASAN: Warnai petak di bawah kaki terlebih dahulu agar tidak terkena penalti cat berdiri di wilayah netral/musuh.
-                rc.attack(rc.getLocation());
-            } else {
-                MapLocation bestPaint = null;
-                int bestPaintScore = 0;
-                for (MapInfo tile : nearbyTiles) {
-                    if (!rc.canAttack(tile.getMapLocation())) continue;
-                    MapLocation tileLoc = tile.getMapLocation();
-                    PaintType tp = tile.getPaint();
-
-                    int s = 0;
-                    if (tp.isEnemy()) {
-                        // PENJELASAN: Cek apakah petak cat musuh ini bersebelahan dengan wilayah sekutu.
-                        // Jika ya, ini adalah "penyusupan aktif" yang harus dihapus segera sebelum musuh semakin dalam ke wilayah kita.
-                        boolean nearAlly = false;
-                        for (Direction d : directions) {
-                            MapLocation adj = tileLoc.add(d);
-                            if (rc.canSenseLocation(adj) && rc.senseMapInfo(adj).getPaint().isAlly()) {
-                                nearAlly = true;
-                                break;
-                            }
-                        }
-                        s = nearAlly ? 5 : 2;
-                    } else if (tp == PaintType.EMPTY && tile.isPassable() && !tile.hasRuin()) {
-                        s = 1;
-                    }
-
-                    if (s > bestPaintScore) {
-                        bestPaintScore = s;
-                        bestPaint = tileLoc;
-                    }
-                }
-                if (bestPaint != null) rc.attack(bestPaint);
-            }
-        }
-
-        // PENJELASAN: Sistem gerak greedy "Border Guard", pilih arah dengan skor tertinggi.
-        // Fungsi skor: score = (petak_kosong x 12) - (biaya_cat x 15) - (robot_sekutu x 8)
-        // - Petak kosong banyak di sekitar tujuan = bagus, banyak yang bisa diwarnai
-        // - Biaya cat tinggi (wilayah musuh) = buruk, menghabiskan cat dengan cepat
-        // - Banyak robot sekutu di tujuan = buruk, supaya soldier menyebar otomatis
-        // PENTING: Tidak ada penalti untuk wilayah sekutum soldier BOLEH tetap di dekat wilayah sendiri karena tugasnya adalah menjaga perbatasan, bukan selalu ekspansi keluar.
-        // Move and attack randomly if no objective.
-        if (rc.isMovementReady()) {
-            Direction bestDir = null;
-            int bestScore = Integer.MIN_VALUE;
-
-            for (Direction d : directions) {
-                if (!rc.canMove(d)) continue;
-                MapLocation dest = myLoc.add(d);
-                MapInfo destInfo = rc.senseMapInfo(dest);
-                PaintType destPaint = destInfo.getPaint();
-
-                int traversalCost = paintCostOf(destPaint);
-                int newTiles = countUnpaintedAround(rc, dest);
-
-                int score = newTiles * 12;
-                score -= traversalCost * 15;
-
-                // PENJELASAN: Penalti tambahan untuk jalur berbayar jika cat sedang rendah.
-                // Semakin rendah cat, semakin soldier menghindari wilayah netral/musuh.
-                if (paintRatio < 0.4) score -= traversalCost * 10;
-                if (paintRatio < 0.2 && traversalCost > 0) score -= 30;
-
-                // PENJELASAN: Penalti anti-cluster, hindari arah yang sudah ramai robot sekutu agar soldier menyebar ke area yang berbeda secara otomatis.
-                RobotInfo[] allyNear = rc.senseNearbyRobots(dest, 2, rc.getTeam());
-                score -= 8 * allyNear.length;
-
-                // PENJELASAN: Penalti anti-loop, kurangi skor untuk lokasi yang baru saja dikunjungi agar robot tidak berputar-putar di tempat yang sama.
-                score -= visitedPenalty(dest);
-                score += rng.nextInt(3);
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestDir = d;
-                }
-            }
-
-            if (bestDir != null) {
-                rc.move(bestDir);
-                recordVisit(rc.getLocation());
-            } else {
-                // PENJELASAN: Fallback, jika semua arah mendapat skor sama buruk atau tidak valid, gerak secara acak sebagai tindakan darurat agar robot tidak membeku.
-                Direction randomDir = directions[rng.nextInt(directions.length)];
-                if (rc.canMove(randomDir)) {
-                    rc.move(randomDir);
-                    recordVisit(rc.getLocation());
-                }
-            }
-        }
-    }
-
-
-    /**
-     * Run a single turn for a Mopper.
-     * This code is wrapped inside the infinite loop in run(), so it is called once per turn.
-     */
-    public static void runMopper(RobotController rc) throws GameActionException{
-        MapLocation myLoc = rc.getLocation();
-        int curPaint = rc.getPaint();
-        int maxPaint = 100;
-
-        // PENJELASAN: Mopper isi ulang cat hanya jika sudah sangat kritis (< 20).
-        // Threshold sengaja dibuat rendah karena mopper bisa mendapat cat dari musuh saat menyerang, sehingga tidak perlu sering balik ke tower seperti soldier.
-        if (curPaint < 20) {
-            MapLocation tower = findNearestKnownTower(rc);
-            if (tower != null) {
-                if (myLoc.distanceSquaredTo(tower) <= 2) {
-                    int need = maxPaint - curPaint;
-                    if (rc.canTransferPaint(tower, -need)) {
-                        rc.transferPaint(tower, -need);
-                    }
-                } else {
-                    navigateToward(rc, tower);
-                    return;
-                }
-            }
-        }
-
-        // PENJELASAN: Mopper membantu soldier yang catnya hampir habis (< 50% kapasitas = 100 cat).
-        // Transfer dilakukan jika mopper sendiri masih punya cukup cat (sisakan minimal 10).
-        // Ini mencegah soldier terkena cooldown penalty akibat kekurangan cat di lapangan.
-        RobotInfo[] allies = rc.senseNearbyRobots(-1, rc.getTeam());
-        for (RobotInfo ally : allies) {
-            if (ally.type == UnitType.SOLDIER && ally.paintAmount < 100) {
-                if (myLoc.distanceSquaredTo(ally.location) <= 2) {
-                    int transfer = Math.min(curPaint - 10, 200 - ally.paintAmount);
-                    if (transfer > 0 && rc.canTransferPaint(ally.location, transfer)) {
-                        rc.transferPaint(ally.location, transfer);
-                        curPaint -= transfer;
+            } else { // Kalau belum jadi tower, masukin ke list
+                boolean known = false;
+                for (int i = 0; i < ruinCount; i++) {
+                    if (knownRuins[i] != null && knownRuins[i].equals(loc)) {
+                        known = true;
                         break;
                     }
                 }
+                if (!known && ruinCount < 50) {
+                    knownRuins[ruinCount++] = loc;
+                }
             }
         }
+    }
 
-        // PENJELASAN: Mop Swing adalah serangan AoE mopper yang mengenai 3 petak sekaligus dalam satu arah (depan, depan-kiri, depan-kanan). Hanya dilakukan jika ada MINIMAL 2 musuh berjejer di arah tersebut agar tidak membuang cooldown 20 ronde untuk target yang terlalu sedikit.
-        // Move and attack randomly.
-        RobotInfo[] enemies = rc.senseNearbyRobots(-1, rc.getTeam().opponent());
-        boolean didSwing = false;
-        for (Direction d : directions) {
-            if (rc.canMopSwing(d)) {
-                int enemiesInSwing = countEnemiesInSwingDir(rc, d, enemies);
-                if (enemiesInSwing >= 2) {
-                    rc.mopSwing(d);
-                    System.out.println("Mop Swing! Booyah!");
-                    didSwing = true;
+    /* ===== RELOAD PAINT ===== */
+    // Kalau robot lagi reload, hold semua action
+    static boolean tryReloadPaint(RobotController rc) throws GameActionException {
+        // Batas minimal cat sebelum reload: sisa 30% dari kapasitas
+        int threshold = (int)(rc.getType().paintCapacity * 0.3);
+        if (rc.getPaint() >= threshold) { // Kalau masih di atas batas, lanjut aja
+            return false;
+        }
+
+        MapLocation nearest = null; // Lokasi menara sekutu terdekat yang udah dicatat
+        int minDist = Integer.MAX_VALUE; // Set minimal distance ke maksimal value dari integer, supaya jarak-jarak lainnya bakal selalu di bawah dia
+        for (int i = 0; i < towerCount; i++) { // Tentuin tower terdekat
+            int distance = rc.getLocation().distanceSquaredTo(alliedTowers[i]); // Jarak robot dengan suatu tower
+            if (distance < minDist) {
+                minDist = distance;
+                nearest = alliedTowers[i]; // Simpan tower terdekat
+            }
+        }
+        // Kalau gaada sama sekali tower yang udah dicatat di sekitar
+        if (nearest == null) {
+            return false;
+        }
+
+        if (minDist <= 2) { // Kondisi kalau robot udah sebelahan sama menara
+            if (rc.isActionReady()) { // Perhitungan reload cat
+                int need = rc.getType().paintCapacity - rc.getPaint();
+                if (need > 0 && rc.canTransferPaint(nearest, -need)) {
+                    rc.transferPaint(nearest, -need); // Robot ambil cat dari tower (hence the -)
+                }
+            }
+        } else if (rc.isMovementReady()) { // Kalau robot masih jauh dari tower terdekat
+            moveToTarget(rc, nearest); // Gerak ke arah tower
+        } // Di luar itu, robot diam di tempat sampe nunggu action ready di next round
+        return true; // Robot lagi reload
+    }
+
+    /* ===== TOWER LOGIC ===== */
+    static void runTower(RobotController rc) throws GameActionException {
+        // Prioritas 1: spawn robot (utamanya soldier)
+        // Pakai buffer cat = 300 dan chips = 500 supaya masih ada cukup setidaknya satu kali lagi ngespawn
+        if (rc.isActionReady() && rc.getPaint() >= 300 && rc.getChips() >= 500) {
+            int randomRoll = randomNumberGenerator.nextInt(10);
+            UnitType unit;
+            if (randomRoll < 4) { // Probabilitas spawn soldier = 40%
+                unit = UnitType.SOLDIER;
+            } else if (randomRoll < 7) { // Probabilitas spawn splasher = 30%
+                unit = UnitType.SPLASHER;
+            } else { // Probabilitas spawn mopper = 30%
+                unit = UnitType.MOPPER;
+            }
+
+            // Kalau ga cukup chipsnya, fallback ke soldier yang paling murah
+            if (unit == UnitType.SPLASHER && rc.getChips() < 400) {
+                unit = UnitType.SOLDIER;
+            }
+            if (unit == UnitType.MOPPER && rc.getChips() < 300) {
+                unit = UnitType.SOLDIER;
+            }
+
+            // Coba spawn ke semua arah sampai ketemu yang valid (ga tabrakan sama robot lain misal)
+            for (Direction dir : directions) {
+                MapLocation loc = rc.getLocation().add(dir);
+                if (rc.canBuildRobot(unit, loc)) {
+                    rc.buildRobot(unit, loc);
                     break;
                 }
             }
         }
 
-        // PENJELASAN: Sistem gerak mopper menuju area cat musuh terbanyak.
-        // Skor arah gerak (greedy, pilih arah dengan skor tertinggi):
-        // - Cat musuh di tujuan: +20 (mopper ingin berada di wilayah musuh untuk menyerang)
-        // - Biaya cat traversal x 8: negatif (hindari jalur mahal)
-        // - Wilayah sekutu: -15 (dorong mopper keluar dari zona aman menuju musuh)
-        // - Robot musuh di sekitar: +25 per robot (bisa drain cat musuh saat menyerang)
-        // - Lookahead 1 petak: +10 jika petak berikutnya juga cat musuh (area musuh lebih luas)
-        if (rc.isMovementReady()) {
-            Direction bestDir = null;
-            int bestScore = Integer.MIN_VALUE;
-
-            for (Direction d : directions) {
-                if (!rc.canMove(d)) continue;
-                MapLocation dest = myLoc.add(d);
-                MapInfo destInfo = rc.senseMapInfo(dest);
-                PaintType destPaint = destInfo.getPaint();
-
-                int score = 0;
-                int traversalCost = paintCostOf(destPaint);
-
-                score -= traversalCost * 8;
-                if (destPaint.isEnemy()) score += 20;
-                if (destPaint.isAlly()) score -= 15;
-
-                for (RobotInfo enemy : enemies) {
-                    if (dest.distanceSquaredTo(enemy.location) <= 4) {
-                        score += 25;
-                    }
-                }
-
-                // PENJELASAN: Lookahead 1 petak ke depan, jika petak setelah tujuan juga cat musuh, artinya ada area musuh yang lebih luas di arah itu, prioritaskan arah tersebut.
-                MapLocation further = dest.add(d);
-                if (rc.canSenseLocation(further)) {
-                    if (rc.senseMapInfo(further).getPaint().isEnemy()) score += 10;
-                }
-
-                score -= visitedPenalty(dest);
-                score += rng.nextInt(3);
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestDir = d;
-                }
-            }
-
-            if (bestDir != null) {
-                rc.move(bestDir);
-                recordVisit(rc.getLocation());
-            } else {
-                Direction randomDir = directions[rng.nextInt(directions.length)];
-                if (rc.canMove(randomDir)) {
-                    rc.move(randomDir);
-                    recordVisit(rc.getLocation());
-                }
+        // Prioritas 2: attack musuh
+        for (RobotInfo enemy : rc.senseNearbyRobots(-1, rc.getTeam().opponent())) { // Scan semua robot musuh yang berada dalam jangkauan
+            if (rc.canAttack(enemy.getLocation())) {
+                rc.attack(enemy.getLocation()); // Serang yang pertama bisa diserang
+                break;
             }
         }
 
-        myLoc = rc.getLocation();
-
-        // PENJELASAN: Setelah bergerak, coba mop swing lagi dengan threshold lebih rendah (>= 1).
-        // Sebelum bergerak threshold >= 2, setelah bergerak cukup 1 musuh sudah worth it karena posisi robot sudah lebih dekat ke musuh.
-        if (!didSwing) {
-            enemies = rc.senseNearbyRobots(-1, rc.getTeam().opponent());
-            for (Direction d : directions) {
-                if (rc.canMopSwing(d)) {
-                    int cnt = countEnemiesInSwingDir(rc, d, enemies);
-                    if (cnt >= 1) {
-                        rc.mopSwing(d);
-                        System.out.println("Mop Swing! Booyah!");
-                        didSwing = true;
-                        break;
-                    }
-                }
-            }
+        // Prioritas 3: upgrade tower
+        if (rc.canUpgradeTower(rc.getLocation())) { // Cek lokasi tower saat ini, masih bisa upgrade apa ngga (chips cukup dan belum level maksimal)
+            rc.upgradeTower(rc.getLocation());
         }
-
-        // PENJELASAN: Jika tidak bisa mop swing, serang satu petak cat musuh terdekat secara langsung.
-        // Ini menghapus cat musuh dari peta satu per satu secara konsisten meskipun tidak ada robot musuh yang bisa di-drain.
-        if (!didSwing) {
-            for (Direction d : directions) {
-                MapLocation target = myLoc.add(d);
-                if (rc.canSenseLocation(target)) {
-                    MapInfo targetInfo = rc.senseMapInfo(target);
-                    if (targetInfo.getPaint().isEnemy() && rc.canAttack(target)) {
-                        rc.attack(target);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // We can also move our code into different methods or classes to better organize it!
-        updateEnemyRobots(rc);
     }
 
-    /**
-     * Run a single turn for a Splasher.
-     * This code is wrapped inside the infinite loop in run(), so it is called once per turn.
-     */
-    public static void runSplasher(RobotController rc) throws GameActionException{
-        MapLocation myLoc = rc.getLocation();
-        int curPaint = rc.getPaint();
-        int maxPaint = rc.getType().paintCapacity;
+    /* ===== SOLDIER LOGIC ===== */
+    static void runSoldier(RobotController rc) throws GameActionException {
+        // Prioritas 1: reload cat kalau hampir habis
+        if (tryReloadPaint(rc)) {
+            return;
+        }
 
-        // PENJELASAN: Splasher mulai balik ke tower jika cat sudah di bawah 25% kapasitas.
-        // Threshold lebih tinggi dari mopper karena setiap splash menghabiskan banyak cat dan splasher harus selalu punya cadangan cukup untuk splash yang efektif.
-        double paintRatio = (double) curPaint / maxPaint;
-        if (paintRatio < 0.25) {
-            MapLocation tower = findNearestKnownTower(rc);
-            if (tower != null) {
-                if (myLoc.distanceSquaredTo(tower) <= 2) {
-                    int need = maxPaint - curPaint;
-                    if (rc.canTransferPaint(tower, -need)) {
-                        rc.transferPaint(tower, -need);
-                        curPaint = rc.getPaint();
-                        paintRatio = (double) curPaint / maxPaint;
-                    }
-                } else if (rc.isMovementReady()) {
-                    navigateToward(rc, tower);
-                    return;
-                }
+        // Prioritas 2: Cek ruin yang langsung terlihat (dalam jarak pandang)
+        MapLocation myLocation = rc.getLocation();
+        MapInfo targetRuin = null; // Ruin yang bakal dikerjain nanti di round ini
+        for (MapInfo tile : rc.senseNearbyMapInfos()) { // Scan semua tile dalam jangkauan
+            if (!tile.hasRuin()) { // Cari yang punya ruin
+                continue;
+            }
+            MapLocation location = tile.getMapLocation();
+            if (!rc.canSenseLocation(location)) {
+                continue;
+            }
+            RobotInfo robotAtLocation = rc.senseRobotAtLocation(location);
+            if (robotAtLocation == null) { // Kalau tidak ada robot di ruin, pasti belum ada menara
+                targetRuin = tile;
+                break;
             }
         }
 
-        // PENJELASAN: Splasher bergerak menuju area dengan cat musuh terbanyak di sekitarnya.
-        // Splasher adalah "Area Reclaimer", tugasnya merebut kembali wilayah yang sudah diambil musuh, bukan ekspansi ke area baru yang masih kosong.
-        // Skor arah gerak:
-        // - Cat musuh di sekitar tujuan x 15, prioritas utama, menuju area musuh terpadat
-        // - Biaya cat traversal x 12, negatif, hemat cat di perjalanan
-        // - Petak musuh: +10, Petak kosong: +5, bonus kecil untuk hemat cat traversal
-        if (rc.isMovementReady()) {
-            Direction bestDir = null;
-            int bestMoveScore = Integer.MIN_VALUE;
+        if (targetRuin != null) {
+            buildTowerAtRuin(rc, targetRuin.getMapLocation());
+            return;
+        }
 
-            for (Direction d : directions) {
-                if (!rc.canMove(d)) continue;
-                MapLocation dest = myLoc.add(d);
-                MapInfo destInfo = rc.senseMapInfo(dest);
-                PaintType destPaint = destInfo.getPaint();
+        // Prioritas 3: cari ruin di memory yang paling jauh dari menara sekutu
+        MapLocation bestRuin = null; // Ruin terbaik buat disamperin nanti
+        int maxDistanceFromTowers = -1;
 
-                int traversalCost = paintCostOf(destPaint);
-                int score = 0;
-                score -= traversalCost * 12;
+        // Untuk setiap ruin di memory, hitung seberapa jauh ruin itu dari tower sekutu terdekat
+        // Pilih ruin yang jaraknya paling jauh
+        for (int i = 0; i < ruinCount; i++) {
+            if (knownRuins[i] == null) {
+                continue;
+            }
+            MapLocation ruin = knownRuins[i];
 
-                // PENJELASAN: Hitung jumlah cat musuh di 8 arah sekitar tujuan.
-                // Splasher ingin bergerak ke area dengan konsentrasi cat musuh tertinggi karena splash di sana akan mereclaim banyak wilayah sekaligus.
-                int enemyPaintAround = countEnemyPaintAround(rc, dest);
-                score += enemyPaintAround * 15;
-
-                if (destPaint.isEnemy()) score += 10;
-                if (destPaint == PaintType.EMPTY) score += 5;
-
-                if (paintRatio < 0.3) score -= traversalCost * 10;
-
-                score -= visitedPenalty(dest);
-                score += rng.nextInt(3);
-
-                if (score > bestMoveScore) {
-                    bestMoveScore = score;
-                    bestDir = d;
+            int minDistanceToTower = Integer.MAX_VALUE;
+            for (int j = 0; j < towerCount; j++) {
+                int distance = ruin.distanceSquaredTo(alliedTowers[j]);
+                if (distance < minDistanceToTower) {
+                    minDistanceToTower = distance;
                 }
             }
 
-            if (bestDir != null) {
-                rc.move(bestDir);
-                recordVisit(rc.getLocation());
-            } else {
-                Direction randomDir = directions[rng.nextInt(directions.length)];
-                if (rc.canMove(randomDir)) {
-                    rc.move(randomDir);
-                    recordVisit(rc.getLocation());
-                }
+            if (minDistanceToTower > maxDistanceFromTowers) {
+                maxDistanceFromTowers = minDistanceToTower;
+                bestRuin = ruin;
             }
         }
 
-        // PENJELASAN: Pilih titik splash terbaik dalam jangkauan aksi secara greedy.
-        // Fungsi skor splash: score = (4 x cat_musuh) + (2 x petak_kosong) - (2 x petak_sekutu)
-        // - Cat musuh dapat bobot 4 (tertinggi), tujuan utama: reclaim wilayah musuh
-        // - Petak kosong dapat bobot 2, bisa sekalian diwarnai saat reclaim
-        // - Petak sekutu mendapat penalti -2, splash di wilayah sendiri membuang cat sia-sia
+        // Kalau ada bestRuin
+        if (bestRuin != null) {
+            if (rc.isMovementReady()) { // Gerak ke si bestRuin
+                moveToTarget(rc, bestRuin);
+            }
+            if (myLocation.distanceSquaredTo(bestRuin) <= 8) { // Kalau udah deket, coba bangun tower
+                MapInfo ruinInfo = null;
+                if (rc.canSenseLocation(bestRuin)) {
+                    ruinInfo = rc.senseMapInfo(bestRuin);
+                }
+                if (ruinInfo != null) {
+                    buildTowerAtRuin(rc, bestRuin);
+                }
+            }
+            if (rc.isActionReady()) { // Kalau action belum dipakai buat bangun tower, cat tile nya aja
+                paintCurrentTile(rc);
+            }
+            return;
+        }
+
+        // Prioritas 4: kalau gaada ruin di memory, kita explore
         if (rc.isActionReady()) {
-            myLoc = rc.getLocation();
-            MapInfo[] allNearby = rc.senseNearbyMapInfos();
-            MapLocation bestSplash = null;
-            int bestSplashScore = 0;
-
-            MapInfo[] attackCandidates = rc.senseNearbyMapInfos(rc.getType().actionRadiusSquared);
-            for (MapInfo candidate : attackCandidates) {
-                MapLocation loc = candidate.getMapLocation();
-                if (!rc.canAttack(loc)) continue;
-
-                int enemyPaint = 0;
-                int empty = 0;
-                int allyPaint = 0;
-
-                // PENJELASAN: Evaluasi semua petak dalam radius splash (distanceSquared <= 4) dari titik pusat kandidat untuk menghitung total nilai splash di titik tersebut.
-                for (MapInfo t : allNearby) {
-                    if (loc.distanceSquaredTo(t.getMapLocation()) <= 4) {
-                        PaintType p = t.getPaint();
-                        if (p.isEnemy()) enemyPaint++;
-                        else if (p == PaintType.EMPTY) empty++;
-                        else if (p.isAlly()) allyPaint++;
-                    }
-                }
-
-                int score = 4 * enemyPaint + 2 * empty - 2 * allyPaint;
-                if (score > bestSplashScore) {
-                    bestSplashScore = score;
-                    bestSplash = loc;
-                }
-            }
-
-            if (bestSplash != null) {
-                rc.attack(bestSplash);
-            }
+            paintCurrentTile(rc); // Sambil explore sambil ngecat
+        }
+        if (rc.isMovementReady()) {
+            exploreMap(rc);
         }
     }
 
-    public static void updateEnemyRobots(RobotController rc) throws GameActionException{
-        // Sensing methods can be passed in a radius of -1 to automatically use the largest possible value.
-        RobotInfo[] enemyRobots = rc.senseNearbyRobots(-1, rc.getTeam().opponent());
-        if (enemyRobots.length != 0){
-            rc.setIndicatorString("There are nearby enemy robots! Scary!");
-            // Save an array of locations with enemy robots in them for possible future use.
-            MapLocation[] enemyLocations = new MapLocation[enemyRobots.length];
-            for (int i = 0; i < enemyRobots.length; i++){
-                enemyLocations[i] = enemyRobots[i].getLocation();
-            }
-            RobotInfo[] allyRobots = rc.senseNearbyRobots(-1, rc.getTeam());
-            // Occasionally try to tell nearby allies how many enemy robots we see.
-            if (rc.getRoundNum() % 20 == 0){
-                for (RobotInfo ally : allyRobots){
-                    if (rc.canSendMessage(ally.location, enemyRobots.length)){
-                        rc.sendMessage(ally.location, enemyRobots.length);
-                    }
-                }
-            }
-        }
-    }
+    /* ===== SOLDIER HELPERS ===== */
+    // Pakai koordinat ruin yang mau dibangun tower di atasnya
+    static void buildTowerAtRuin(RobotController rc, MapLocation ruinLocation) throws GameActionException {
+        UnitType towerType = UnitType.LEVEL_ONE_PAINT_TOWER; // Summon satu buah tower level 1 tipe paint
 
-    // HELPER FUNCTIONS
-    // HELPER FUNCTIONS
-    // HELPER FUNCTIONS
-
-    // PENJELASAN: Pilih tipe tower yang akan dibangun berdasarkan jumlah tower yang sudah ada.
-    // - Tower ke-1 dan ke-2: Paint Tower, prioritas supply cat di awal game
-    // - Setiap kelipatan 3 tower: Money Tower, tambah income chips per ronde
-    // - Sisanya: Paint Tower, jaga pasokan cat tetap melimpah di seluruh fase permainan
-    static UnitType chooseTowerType(RobotController rc) {
-        int n = rc.getNumberTowers();
-        if (n < 3) return UnitType.LEVEL_ONE_PAINT_TOWER;
-        if (n % 3 == 0) return UnitType.LEVEL_ONE_MONEY_TOWER;
-        return UnitType.LEVEL_ONE_PAINT_TOWER;
-    }
-
-    // PENJELASAN: Menghitung biaya cat per ronde untuk berdiri di petak dengan tipe cat tertentu.
-    // Digunakan dalam scoring gerak untuk memilih jalur yang paling hemat cat.
-    // - Ally  = 0, gratis, tidak ada penalti (selalu diutamakan saat navigasi)
-    // - Empty = 1, biaya sedang
-    // - Enemy = 2, paling mahal, sangat dihindari saat cat rendah
-    static int paintCostOf(PaintType p) {
-        if (p.isAlly()) return 0;
-        if (p.isEnemy()) return 2;
-        return 1;
-    }
-
-    // PENJELASAN: Menghitung jumlah petak cat musuh di 8 arah sekitar lokasi tertentu.
-    // Digunakan oleh splasher untuk menentukan arah gerakan menuju area musuh terpadat dalam rangka mereclaim wilayah yang sudah diambil musuh.
-    static int countEnemyPaintAround(RobotController rc, MapLocation loc) throws GameActionException {
-        int count = 0;
-        for (Direction d : directions) {
-            MapLocation adj = loc.add(d);
-            if (rc.canSenseLocation(adj)) {
-                MapInfo info = rc.senseMapInfo(adj);
-                if (info.getPaint().isEnemy()) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
-    // PENJELASAN: Menghitung jumlah petak yang belum diwarnai sekutu di 8 arah sekitar lokasi.
-    // Mengukur "frontier richness", seberapa banyak petak baru yang bisa diwarnai jika robot bergerak ke lokasi tersebut. Digunakan dalam scoring gerak soldier sebagai salah satu faktor utama pemilihan arah.
-    static int countUnpaintedAround(RobotController rc, MapLocation loc) throws GameActionException {
-        int count = 0;
-        for (Direction d : directions) {
-            MapLocation adj = loc.add(d);
-            if (rc.canSenseLocation(adj)) {
-                MapInfo info = rc.senseMapInfo(adj);
-                if (info.isPassable() && !info.getPaint().isAlly()) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
-    // PENJELASAN: Menyimpan lokasi saat ini ke dalam circular buffer visited tiles.
-    // Buffer berukuran 30 menggunakan pola FIFO, lokasi terlama otomatis terhapus saat buffer penuh dan digantikan lokasi terbaru.
-    static void recordVisit(MapLocation loc) {
-        visitedTiles[visitedIndex] = loc;
-        visitedIndex = (visitedIndex + 1) % visitedTiles.length;
-    }
-
-    // PENJELASAN: Memberikan penalti 100 jika lokasi yang dievaluasi ada dalam visited buffer.
-    // Penalti besar ini mengurangi skor arah gerak secara signifikan sehingga robot cenderung menghindari lokasi yang baru saja dikunjungi, efektif mencegah robot berputar-putar.
-    static int visitedPenalty(MapLocation loc) {
-        for (int i = 0; i < visitedTiles.length; i++) {
-            if (visitedTiles[i] != null && visitedTiles[i].equals(loc)) {
-                return 100;
-            }
-        }
-        return 0;
-    }
-
-    // PENJELASAN: Memperbarui daftar tower sekutu yang diketahui setiap giliran.
-    // Step 1: Hapus tower dari memori jika lokasinya sudah bisa dilihat tapi tower tidak ada lagi (hancur atau sudah bukan tower), mencegah robot navigasi ke "ghost tower".
-    // Step 2: Tambahkan tower baru yang baru pertama kali terlihat ke dalam memori.
-    // Sistem ini memungkinkan robot kembali ke tower meskipun sudah keluar dari jangkauan sensor.
-    static void rememberTowers(RobotController rc) throws GameActionException {
-        for (int i = 0; i < knownTowerCount; i++) {
-            if (rc.canSenseLocation(knownTowers[i])) {
-                RobotInfo robotThere = rc.senseRobotAtLocation(knownTowers[i]);
-                if (robotThere == null || robotThere.team != rc.getTeam()
-                        || robotThere.type == UnitType.SOLDIER
-                        || robotThere.type == UnitType.MOPPER
-                        || robotThere.type == UnitType.SPLASHER) {
-                    knownTowers[i] = knownTowers[knownTowerCount - 1];
-                    knownTowerCount--;
-                    i--;
-                }
-            }
+        // Cek pattern buat tower udah jadi atau belum
+        if (rc.canCompleteTowerPattern(towerType, ruinLocation)) {
+            rc.completeTowerPattern(towerType, ruinLocation);
+            return;
         }
 
-        RobotInfo[] allies = rc.senseNearbyRobots(-1, rc.getTeam());
-        for (RobotInfo ally : allies) {
-            if (ally.type != UnitType.SOLDIER && ally.type != UnitType.MOPPER && ally.type != UnitType.SPLASHER) {
-                boolean known = false;
-                for (int i = 0; i < knownTowerCount; i++) {
-                    if (knownTowers[i].equals(ally.location)) {
-                        known = true;
+        // Nempatin penanda di 24 tile sekitar ruin buat nandain pola
+        if (rc.canMarkTowerPattern(towerType, ruinLocation)) {
+            rc.markTowerPattern(towerType, ruinLocation);
+        }
+
+        // Warnain tile sesuai pola pakai warna primer dan sekunder
+        if (rc.isActionReady()) {
+            for (MapInfo patternTile: rc.senseNearbyMapInfos(ruinLocation, 8)) { // Scan map dalam radius <= 8 dari pusat ruin
+                // Cari tile yang udah ditandain dan belum diwarnain sesuai penanda
+                if (patternTile.getMark() != PaintType.EMPTY && patternTile.getMark() != patternTile.getPaint()) {
+                    boolean useSecondaryColor = (patternTile.getMark() == PaintType.ALLY_SECONDARY);
+                    if (rc.canAttack(patternTile.getMapLocation())) {
+                        rc.attack(patternTile.getMapLocation(), useSecondaryColor);
                         break;
                     }
                 }
-                if (!known && knownTowerCount < knownTowers.length) {
-                    knownTowers[knownTowerCount] = ally.location;
-                    knownTowerCount++;
+            }
+        }
+        // Kalau action udah kepake, deketin ruin aja terus
+        if (rc.isMovementReady()) {
+            moveToTarget(rc, ruinLocation);
+        }
+    }
+
+    // Buat beneran naro cat ke tile di map
+    static void paintCurrentTile(RobotController rc) throws GameActionException {
+        MapInfo currentTile = rc.senseMapInfo(rc.getLocation()); // Tile yang lagi ditempatin sekarang
+        if (!currentTile.getPaint().isAlly() && rc.canAttack(rc.getLocation())) {
+            rc.attack(rc.getLocation()); // Warnain tile yang lagi diinjek sekarang
+        }
+    }
+
+    /* ===== SPLASHER LOGIC ===== */
+    static void runSplasher(RobotController rc) throws GameActionException {
+        // Prioritas 1: reload cat kalau hampir habis
+        if (tryReloadPaint(rc)) {
+            return;
+        }
+
+        // Prioritas 2: samperin tower yang butuh support
+        if (rc.isMovementReady()) {
+            MapLocation target = findTowerToSupport(rc); // Butuh support: tower yang sekitarnya masih belum banyak diwarnain
+            if (target != null) { // Kalau ada, samperin
+                moveToTarget(rc, target);
+            } else { // Kalau gaada, lanjut explore
+                exploreMap(rc);
+            }
+        }
+
+        // Prioritas 3: Area of Effect (AoE) attack
+        if (rc.isActionReady()) {
+            MapLocation bestTarget = null;
+            int maxScore = 0;
+            // Cari semua kemungkinan titik yang bisa dijadikan pusat serangan
+            for (MapInfo tile : rc.senseNearbyMapInfos(rc.getType().actionRadiusSquared)) {
+                MapLocation location = tile.getMapLocation();
+                if (!rc.canAttack(location)) {
+                    continue;
+                }
+                int score = 0;
+                // Buat setiap kemungkinan, cek berapa tile yang bakal diwarnain kalau diserang di situ
+                for (MapInfo aoeTile : rc.senseNearbyMapInfos(location, 4)) {
+                    // Aturan scoring: +2 = tile musuh, +1 = bisa diwarnain, +0 = tidak perlu diwarnain ulang, +0 = wall/ruin
+                    if (!aoeTile.isWall() && !aoeTile.hasRuin() && !aoeTile.getPaint().isAlly()) {
+                        if (aoeTile.getPaint().isEnemy()) {
+                            score = score + 2;
+                        } else {
+                            score = score + 1;
+                        }
+                    }
+                }
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestTarget = location; // Koordinat yang kalau jadi titik pusat serangan, bisa ngecover banyak area
+                }
+            }
+            if (bestTarget != null && maxScore > 0) { // Serang kalo worth it aja
+                rc.attack(bestTarget);
+            }
+        }
+    }
+
+    /* ===== SPLASHER HELPERS ===== */
+    // Cari tower sekutu yang wilayah sekitarnya paling banyak belum diwarnain
+    static MapLocation findTowerToSupport(RobotController rc) throws GameActionException {
+        MapLocation best = null;
+        int maxUnpainted = 0; // Thresholder jumlah petak belum diwarnain terbanyak
+
+        for (int i = 0; i < towerCount; i++) {
+            MapLocation tower = alliedTowers[i];
+            if (!rc.canSenseLocation(tower)) { // Kalau di luar jangkauan
+                continue;
+            }
+
+            int unpaintedCount = 0; // Banyak tile yang belum diwarnain di sekitar tower ini
+            for (MapInfo tile : rc.senseNearbyMapInfos(tower, 8)) {
+                if (!tile.isWall() && !tile.hasRuin() && !tile.getPaint().isAlly()) {
+                    unpaintedCount++; // Nambah terus kalau belum tile itu bukan wall/ruin dan belum diwarnain sekutu
+                }
+            }
+
+            if (unpaintedCount > maxUnpainted) {
+                maxUnpainted = unpaintedCount;
+                best = tower;
+            }
+        }
+        return best;
+    }
+
+    /* ===== MOPPER LOGIC ===== */
+    static void runMopper(RobotController rc) throws GameActionException {
+        // Reload cat kalau bener-bener hampir habis aja
+        if (rc.getPaint() < 10 && tryReloadPaint(rc)) {
+            return;
+        }
+
+        // Mopper udah ngelakuin suatu aksi belum di round ini
+        boolean acted = false;
+
+        // Prioritas 1: mopper swing kalau ada musuh di sekitar
+        if (rc.isActionReady()) {
+            for (Direction dir : directions) {
+                if (rc.canMopSwing(dir)) {
+                    rc.mopSwing(dir); // Kalau ada musuh di sekitar (2 petak lurus depan, 2 petak sebelah kirinya, dan 2 petak sebelah kanannya), swing ke arah dia
+                    acted = true; // Aksi udah kepake sekali
+                    break;
                 }
             }
         }
-    }
 
-    // PENJELASAN: Mencari tower sekutu terdekat dari daftar knownTowers yang tersimpan di memori.
-    // Menggunakan distanceSquared (bukan Euclidean distance) untuk efisiensi komputasi karena tidak memerlukan operasi akar kuadrat. Digunakan robot untuk menentukan tujuan refill cat.
-    static MapLocation findNearestKnownTower(RobotController rc) {
-        MapLocation nearest = null;
-        int minDist = Integer.MAX_VALUE;
-        for (int i = 0; i < knownTowerCount; i++) {
-            int dist = rc.getLocation().distanceSquaredTo(knownTowers[i]);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = knownTowers[i];
-            }
-        }
-        return nearest;
-    }
-
-    // PENJELASAN: Navigasi cerdas menuju target dengan mempertimbangkan biaya cat jalur.
-    // Fungsi skor yang DIMINIMASI: dist_ke_target + (biaya_cat x 15) + visited_penalty
-    // - Lebih dekat ke target, lebih baik (dist kecil lebih dipilih)
-    // - Jalur melalui wilayah sekutu (biaya 0), sangat diutamakan
-    // - Jalur melalui wilayah musuh (biaya 2 x 15 = 30 ekstra), sangat dihindari
-    // Ini memastikan robot selalu memilih rute yang hemat cat saat bepergian ke tujuan.
-    static void navigateToward(RobotController rc, MapLocation target) throws GameActionException {
-        Direction bestDir = null;
-        int bestScore = Integer.MAX_VALUE; // minimize
-
-        for (Direction d : directions) {
-            if (!rc.canMove(d)) continue;
-            MapLocation next = rc.getLocation().add(d);
-            int dist = next.distanceSquaredTo(target);
-            int cost = 0;
-            if (rc.canSenseLocation(next)) {
-                cost = paintCostOf(rc.senseMapInfo(next).getPaint());
-            }
-            int score = dist + cost * 15 + visitedPenalty(next);
-            if (score < bestScore) {
-                bestScore = score;
-                bestDir = d;
+        // Prioritas 2: isi cat ke sekutu yang hampir habis
+        if (rc.isActionReady() && !acted && rc.getPaint() > 50) { // Kalau cat mopper masih cukup dan belum beraksi di round ini
+            for (RobotInfo ally : rc.senseNearbyRobots(2, rc.getTeam())) { // Cek ada robot sekutu di tile sebelah apa ngga
+                if (ally.getPaintAmount() < ally.getType().paintCapacity * 0.2) {
+                    if (rc.canTransferPaint(ally.getLocation(), 20)) {
+                        rc.transferPaint(ally.getLocation(), 20); // Mopper memberi 20 cat ke robot sekutu (hence the +)
+                        acted = true; // Udah beraksi di round ini
+                        break;
+                    }
+                }
             }
         }
 
-        if (bestDir != null) {
-            rc.move(bestDir);
-            recordVisit(rc.getLocation());
-        }
-    }
-
-    // PENJELASAN: Warnai petak di bawah kaki robot jika belum diwarnai oleh sekutu.
-    // Dilakukan setiap kali robot berpindah posisi untuk memastikan jalur yang dilalui robot selalu diwarnai, mengurangi penalti cat berdiri di wilayah netral.
-    // Try to paint beneath us as we walk to avoid paint penalties.
-    // Avoiding wasting paint by re-painting our own tiles.
-    static void paintCurrentTile(RobotController rc) throws GameActionException {
-        MapInfo currentTile = rc.senseMapInfo(rc.getLocation());
-        if (!currentTile.getPaint().isAlly() && rc.canAttack(rc.getLocation())) {
-            rc.attack(rc.getLocation());
-        }
-    }
-
-    // PENJELASAN: Menghitung jumlah musuh yang akan terkena mop swing ke arah tertentu.
-    // Mop swing mengenai 3 petak sekaligus: depan, depan-kiri, depan-kanan dari posisi robot.
-    // Fungsi ini dipakai untuk memutuskan apakah mop swing layak dilakukan sebelum menghabiskan cooldown 20 ronde (cooldown besar, jadi harus pastikan target cukup banyak).
-    static int countEnemiesInSwingDir(RobotController rc, Direction dir, RobotInfo[] enemies) {
-        MapLocation myLoc = rc.getLocation();
-        MapLocation front = myLoc.add(dir);
-        MapLocation frontLeft = myLoc.add(dir.rotateLeft());
-        MapLocation frontRight = myLoc.add(dir.rotateRight());
-
-        int count = 0;
-        for (RobotInfo enemy : enemies) {
-            MapLocation eLoc = enemy.location;
-            if (eLoc.equals(front) || eLoc.equals(frontLeft) || eLoc.equals(frontRight)) {
-                count++;
+        // Prioritas 3: hapus cat musuh
+        if (rc.isActionReady() && !acted) {
+            MapLocation bestTarget = null;
+            int maxScore = 0;
+            for (MapInfo tile : rc.senseNearbyMapInfos(rc.getType().actionRadiusSquared)) {
+                if (!tile.getPaint().isEnemy() || !rc.canAttack(tile.getMapLocation())) {
+                    continue;
+                }
+                // Sistem scoring: default kalau tile punya musuh = 1, +2 = kalau tile sekutu sebelahan sama tile musuh (perbatasan)
+                int score = 1;
+                for (MapInfo neighbor : rc.senseNearbyMapInfos(tile.getMapLocation(), 2)) {
+                    if (neighbor.getPaint().isAlly()) {
+                        score = score + 2;
+                    }
+                }
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestTarget = tile.getMapLocation();
+                }
+            }
+            if (bestTarget != null) {
+                rc.attack(bestTarget);
             }
         }
-        return count;
+        if (rc.isMovementReady()) {
+            patrolAllyTerritory(rc);
+        }
+    }
+
+    /* ===== MOPPER HELPERS ===== */
+    static void patrolAllyTerritory(RobotController rc) throws GameActionException {
+        Direction bestDirection = null;
+        int maxScore = -99999;
+
+        for (Direction dir : directions) {
+            if (!rc.canMove(dir)) {
+                continue;
+            }
+            MapLocation nextLocation = rc.getLocation().add(dir);
+            int score = 0;
+
+            if (nextLocation.x > 0 && nextLocation.x < 61 && nextLocation.y >= 0 && nextLocation.y < 61) {
+                int tileType = mapMemory[nextLocation.x][nextLocation.y]; // Tile yang mau dituju
+                if (tileType == 2) { // +30 = tile sekutu, boleh tapi ga prioritas utama
+                    score = score + 30;
+                } else if (tileType == 3) { // +50 = tile musuh (mau dihapus catnya)
+                    score = score + 50;
+                } else if (tileType == 1) { // +10 = tile kosong, bisa dilewatin aja tapi ga prioritas juga
+                    score = score + 10;
+                }
+            }
+
+            // Biar ga jalan ke arah tile yang baru dikunjungi, kasih -100 pas mau mencoba jalan ke arah itu
+            for (int i = 0; i < visitedTiles.length; i++) {
+                if (visitedTiles[i] != null && visitedTiles[i].equals(nextLocation)) {
+                    score = score - 100;
+                }
+            }
+
+            // Biar arah geraknya ngacak (kepake di kalau ada 2 atau lebih arah yang scorenya sama)
+            score = score + randomNumberGenerator.nextInt(5);
+            if (score > maxScore) {
+                maxScore = score;
+                bestDirection =  dir;
+            }
+        }
+
+        // Perbarui lit koordinat tile yang udah dilewatin
+        if (bestDirection != null) {
+            rc.move(bestDirection);
+            visitedTiles[visitedIndex] = rc.getLocation();
+            visitedIndex = (visitedIndex + 1) % visitedTiles.length; // Kalau list udah penuh, balik lagi timpa yang awal
+        }
+    }
+
+    /* ===== MOVEMENT HELPERS ===== */
+    // Dipakai kalau robot punya tujuan spesifik mau ke mana
+    static void moveToTarget(RobotController rc, MapLocation target) throws GameActionException {
+        Direction bestDirection = null;
+        int minScore = Integer.MAX_VALUE;
+
+        for (Direction dir : directions) {
+            if (!rc.canMove(dir)) {
+                continue;
+            }
+
+            MapLocation nextLocation = rc.getLocation().add(dir);
+            int distance = nextLocation.distanceSquaredTo(target);
+            int penalty = 0;
+
+            // Pilih arah dengan jarak paling dekat ke target sambil ngehindarin tile yang baru aja dilewatin
+            for (int i = 0; i < visitedTiles.length; i++) {
+                if (visitedTiles[i] != null && visitedTiles[i].equals(nextLocation)) {
+                    penalty = penalty + 1000;
+                }
+            }
+            if (distance + penalty < minScore) {
+                minScore = distance + penalty;
+                bestDirection = dir;
+            }
+        }
+
+        // Perbaru list tile yang baru dilewatin
+        if (bestDirection != null) {
+            rc.move(bestDirection);
+            visitedTiles[visitedIndex] = rc.getLocation();
+            visitedIndex = (visitedIndex + 1) % visitedTiles.length;
+        }
+    }
+
+    // Dipakai kalau robot belum punya tujuan spesifik mau ke mana (emang buat explore aja nyari-nyari)
+    static void exploreMap(RobotController rc) throws GameActionException {
+        Direction bestDirection = null;
+        int maxScore = -99999;
+
+        for (Direction dir : directions) {
+            if (!rc.canMove(dir)) {
+                continue;
+            }
+            MapLocation nextLocation = rc.getLocation().add(dir);
+            int score = 0;
+
+            if (nextLocation.x >= 0 && nextLocation.x < 61 && nextLocation.y >= 0 && nextLocation.y < 61) {
+                int tileType = mapMemory[nextLocation.x][nextLocation.y];
+                if (tileType == 0) { // Kalau ketemu tile unknown, ada peluang nemu ruin
+                    score = score + 100;
+                } else if (tileType == 1) { // Kalau ketemu tile kosong, bisa diwarnain
+                    score = score + 50;
+                } else if (tileType == 3) { // Kalau ketemu tile musuh, bisa direbut tapi ga high prio
+                    score = score + 25;
+                } else if (tileType == 2) { // Kalau ketemu tile sekutu, gausah diapa2in lagi
+                    score = score - 75;
+                } else if (tileType == 4) { // Kalau ketemu tembok/ruin, gak bakal dipilih
+                    score = score - 999;
+                }
+            }
+
+            // Biar ga balik lagi ke tile yang udah pernah disamperin
+            for (int i = 0; i < visitedTiles.length; i++) {
+                if (visitedTiles[i] != null && visitedTiles[i].equals(nextLocation)) {
+                    score = score - 150;
+                }
+            }
+
+            // Biar arah geraknya random
+            score = score + randomNumberGenerator.nextInt(10);
+            if (score > maxScore) {
+                maxScore = score;
+                bestDirection = dir;
+            }
+        }
+
+        // Perbaruin list
+        if (bestDirection != null) {
+            rc.move(bestDirection);
+            visitedTiles[visitedIndex] = rc.getLocation();
+            visitedIndex = (visitedIndex + 1) % visitedTiles.length;
+        }
     }
 }
