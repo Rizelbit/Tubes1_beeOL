@@ -1,4 +1,4 @@
-package alternativeBot1;
+package alternativeBots2;
 
 import java.util.Random;
 
