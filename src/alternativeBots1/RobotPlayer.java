@@ -28,14 +28,14 @@ public class RobotPlayer {
 
     /** Array containing all the possible movement directions. */
     static final Direction[] directions = {
-        Direction.NORTH,
-        Direction.NORTHEAST,
-        Direction.EAST,
-        Direction.SOUTHEAST,
-        Direction.SOUTH,
-        Direction.SOUTHWEST,
-        Direction.WEST,
-        Direction.NORTHWEST,
+            Direction.NORTH,
+            Direction.NORTHEAST,
+            Direction.EAST,
+            Direction.SOUTHEAST,
+            Direction.SOUTH,
+            Direction.SOUTHWEST,
+            Direction.WEST,
+            Direction.NORTHWEST,
     };
 
     static int spawnCounter = 0;
@@ -82,9 +82,9 @@ public class RobotPlayer {
                     case MOPPER: runMopper(rc); break;
                     case SPLASHER: runSplasher(rc); break; // Consider upgrading examplefuncsplayer to use splashers!
                     default: runTower(rc); break;
-                    }
                 }
-             catch (GameActionException e) {
+            }
+            catch (GameActionException e) {
                 // Oh no! It looks like we did something illegal in the Battlecode world. You should
                 // handle GameActionExceptions judiciously, in case unexpected events occur in the game
                 // world. Remember, uncaught exceptions cause your robot to explode!
