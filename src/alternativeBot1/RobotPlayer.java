@@ -5,6 +5,8 @@ import battlecode.common.*;
 import java.time.Clock;
 import java.util.Random;
 
+import javax.naming.directory.DirContext;
+
 public class RobotPlayer {
     /* ===== VARIABEL GLOBAL ===== */
     // Hitung sudah berapa ronde robot ini hidup
@@ -186,7 +188,7 @@ public class RobotPlayer {
                 }
             }
         } else if (rc.isMovementReady()) { // Kalau robot masih jauh dari tower terdekat 
-            smartMoveTo(rc, nearest); // Gerak ke arah tower
+            moveToTarget(rc, nearest); // Gerak ke arah tower
         } // Di luar itu, robot diam di tempat sampe nunggu action ready di next round
         return true; // Robot lagi reload
     }
@@ -297,7 +299,7 @@ public class RobotPlayer {
         // Kalau ada bestRuin
         if (bestRuin != null) {
             if (rc.isMovementReady()) { // Gerak ke si bestRuin
-                smartMoveTo(rc, bestRuin); 
+                moveToTarget(rc, bestRuin); 
             }
             if (myLocation.distanceSquaredTo(bestRuin) <= 8) { // Kalau udah deket, coba bangun tower
                 MapInfo ruinInfo = null;
@@ -319,7 +321,7 @@ public class RobotPlayer {
             paintCurrentTile(rc); // Sambil explore sambil ngecat
         }
         if (rc.isMovementReady()) {
-            greedyExplore(rc);
+            exploreMap(rc);
         }
     }
 
@@ -354,7 +356,7 @@ public class RobotPlayer {
         }
         // Kalau action udah kepake, deketin ruin aja terus
         if (rc.isMovementReady()) {
-            smartMoveTo(rc, ruinLocation);
+            moveToTarget(rc, ruinLocation);
         }
     }
 
@@ -377,9 +379,9 @@ public class RobotPlayer {
         if (rc.isMovementReady()) {
             MapLocation target = findTowerToSupport(rc); // Butuh support: tower yang sekitarnya masih belum banyak diwarnain
             if (target != null) { // Kalau ada, samperin
-                smartMoveTo(rc, target);
+                moveToTarget(rc, target);
             } else { // Kalau gaada, lanjut explore
-                greedyExplore(rc);
+                exploreMap(rc);
             }
         }
 
@@ -508,7 +510,7 @@ public class RobotPlayer {
 
     /* ===== MOPPER HELPERS ===== */
     static void patrolAllyTerritory(RobotController rc) throws GameActionException {
-        Direction bestDir = null;
+        Direction bestDirection = null;
         int maxScore = -99999;
 
         for (Direction dir : directions) {
@@ -540,15 +542,100 @@ public class RobotPlayer {
             score = score + randomNumberGenerator.nextInt(5);
             if (score > maxScore) {
                 maxScore = score;
-                bestDir =  dir;
+                bestDirection =  dir;
             }
         }
         
         // Perbarui lit koordinat tile yang udah dilewatin
-        if (bestDir != null) {
-            rc.move(bestDir);
+        if (bestDirection != null) {
+            rc.move(bestDirection);
             visitedTiles[visitedIndex] = rc.getLocation();
             visitedIndex = (visitedIndex + 1) % visitedTiles.length; // Kalau list udah penuh, balik lagi timpa yang awal
+        }
+    }
+
+    /* ===== MOVEMENT HELPERS ===== */
+    // Dipakai kalau robot punya tujuan spesifik mau ke mana
+    static void moveToTarget(RobotController rc, MapLocation target) throws GameActionException {
+        Direction bestDirection = null;
+        int minScore = Integer.MAX_VALUE;
+
+        for (Direction dir : directions) {
+            if (!rc.canMove(dir)) {
+                continue;
+            }
+
+            MapLocation nextLocation = rc.getLocation().add(dir);
+            int distance = nextLocation.distanceSquaredTo(target);
+            int penalty = 0;
+
+            // Pilih arah dengan jarak paling dekat ke target sambil ngehindarin tile yang baru aja dilewatin
+            for (int i = 0; i < visitedTiles.length; i++) {
+                if (visitedTiles[i] != null && visitedTiles[i].equals(nextLocation)) {
+                    penalty = penalty + 1000;
+                }
+            }
+            if (distance + penalty < minScore) {
+                minScore = distance + penalty;
+                bestDirection = dir;
+            }
+        }
+
+        // Perbaru list tile yang baru dilewatin
+        if (bestDirection != null) {
+            rc.move(bestDirection);
+            visitedTiles[visitedIndex] = rc.getLocation();
+            visitedIndex = (visitedIndex + 1) % visitedTiles.length;
+        }
+    }
+
+    // Dipakai kalau robot belum punya tujuan spesifik mau ke mana (emang buat explore aja nyari-nyari)
+    static void exploreMap(RobotController rc) throws GameActionException {
+        Direction bestDirection = null;
+        int maxScore = -99999;
+
+        for (Direction dir : directions) {
+            if (!rc.canMove(dir)) {
+                continue;
+            }
+            MapLocation nextLocation = rc.getLocation().add(dir);
+            int score = 0;
+
+            if (nextLocation.x >= 0 && nextLocation.x < 61 && nextLocation.y >= 0 && nextLocation.y < 61) {
+                int tileType = mapMemory[nextLocation.x][nextLocation.y];
+                if (tileType == 0) { // Kalau ketemu tile unknown, ada peluang nemu ruin
+                    score = score + 100;
+                } else if (tileType == 1) { // Kalau ketemu tile kosong, bisa diwarnain
+                    score = score + 50;
+                } else if (tileType == 3) { // Kalau ketemu tile musuh, bisa direbut tapi ga high prio
+                    score = score + 25;
+                } else if (tileType == 2) { // Kalau ketemu tile sekutu, gausah diapa2in lagi
+                    score = score - 75;
+                } else if (tileType == 4) { // Kalau ketemu tembok/ruin, gak bakal dipilih
+                    score = score - 999;
+                }
+            }
+
+            // Biar ga balik lagi ke tile yang udah pernah disamperin
+            for (int i = 0; i < visitedTiles.length; i++) {
+                if (visitedTiles[i] != null && visitedTiles[i].equals(nextLocation)) {
+                    score = score - 150;
+                }
+            }
+
+            // Biar arah geraknya random
+            score = score + randomNumberGenerator.nextInt(10);
+            if (score > maxScore) {
+                maxScore = score;
+                bestDirection = dir;
+            }
+        }
+
+        // Perbaruin list
+        if (bestDirection != null) {
+            rc.move(bestDirection);
+            visitedTiles[visitedIndex] = rc.getLocation();
+            visitedIndex = (visitedIndex + 1) & visitedTiles.length;
         }
     }
 }
