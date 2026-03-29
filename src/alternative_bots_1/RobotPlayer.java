@@ -1,8 +1,17 @@
-package alternativeBots1;
-
-import battlecode.common.*;
+package alternative_bots_1;
 
 import java.util.Random;
+
+import battlecode.common.Clock;
+import battlecode.common.Direction;
+import battlecode.common.GameActionException;
+import battlecode.common.MapInfo;
+import battlecode.common.MapLocation;
+import battlecode.common.Message;
+import battlecode.common.PaintType;
+import battlecode.common.RobotController;
+import battlecode.common.RobotInfo;
+import battlecode.common.UnitType;
 
 
 /**

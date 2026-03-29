@@ -1,7 +1,17 @@
-package mainBot;
+package main_bot;
 
-import battlecode.common.*;
 import java.util.Random;
+
+import battlecode.common.Clock;
+import battlecode.common.Direction;
+import battlecode.common.GameActionException;
+import battlecode.common.MapInfo;
+import battlecode.common.MapLocation;
+import battlecode.common.Message;
+import battlecode.common.PaintType;
+import battlecode.common.RobotController;
+import battlecode.common.RobotInfo;
+import battlecode.common.UnitType;
 
 /**
  * RobotPlayer is the class that describes your main robot strategy.
